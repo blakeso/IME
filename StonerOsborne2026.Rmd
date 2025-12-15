@@ -1,0 +1,2606 @@
+---
+title: "Stoner-Osborne et al. 2026"
+author: "Blake Stoner-Osborne"
+date: "2025-12-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+#set working directory
+setwd("/Users/blakestoner-osborne/Desktop/Desktop - Blake’s MacBook Pro/Nearshore_Offshore_Isotopes")
+
+#load all necessary libraries
+library(MASS)
+library(tidyverse) 
+library(ggpubr) 
+library(ggh4x)
+library(ggfortify)
+library(gridExtra)
+library(plotly)
+library(vegan) 
+library(FactoMineR)
+library(factoextra)
+library(readxl)
+library(lmtest)
+library(car)
+library(reshape2)
+library(effects)
+library(ggbiplot)
+library(RColorBrewer)
+library(broom)
+library(rstatix)
+library(FSA)
+library(effectsize)
+library(ggrepel)
+library(patchwork)
+library(coin)
+library(scales)
+library(tibble)
+library(stats)
+library(cowplot)
+library(purrr)
+library("ggbiplot")
+
+#load in data
+StonerOsborne2026 <- read.csv("/Users/blakestoner-osborne/Desktop/Desktop - Blake’s MacBook Pro/Nearshore_Offshore_Isotopes/StonerOsborne2026.csv")
+
+#select all d13C EAA, d15N SAA, and TAA values, mean-center all d13C EAA values, calculate TPs
+StonerOsborne2026 <- StonerOsborne2026 %>% 
+  select(Sample.ID, Distance_from_Shore, Collection_Habitat, Sample.Season, Location, Thr13C, Val13C, Leu13C, Ile13C, Phe13C, Lys13C, Ala15N, Glu15N, Phe15N, Lys15N) %>% 
+   mutate(EAA_mean = (Thr13C + Val13C + Leu13C + Lys13C + Ile13C + Phe13C) / 6,
+         Val13C_mean = Val13C - EAA_mean,
+         Thr13C_mean = Thr13C - EAA_mean,
+         Leu13C_mean = Leu13C - EAA_mean,
+         Lys13C_mean = Lys13C - EAA_mean,
+         Ile13C_mean = Ile13C - EAA_mean,
+         Phe13C_mean = Phe13C - EAA_mean,
+         TP.Glx.Phe = ((Glu15N - Phe15N - 3.4)/7.6) + 1,
+         TP.Ala.Phe = ((Ala15N - Phe15N - 3.2)/4.5) + 1,
+         log_dist = log(Distance_from_Shore)) %>% 
+  select(Sample.ID, Distance_from_Shore, log_dist, Collection_Habitat, Sample.Season, Location, Thr13C_mean, Val13C_mean, Leu13C_mean, Ile13C_mean, Phe13C_mean, Lys13C_mean, Phe15N, Lys15N, TP.Glx.Phe, TP.Ala.Phe)
+
+```
+Figure 1. Mean-normalized carbon d13C EAA of Hawaiian Zooplankton (Linear Regressions)
+```{r}
+#select mean-centered d13C EAA values
+mean_centered_13C <- StonerOsborne2026 %>% 
+  select(Sample.ID, Distance_from_Shore, log_dist, Collection_Habitat, Sample.Season, Location, Thr13C_mean, Val13C_mean, Leu13C_mean, Ile13C_mean, Phe13C_mean, Lys13C_mean) %>% 
+  na.omit()
+
+#get data into long format
+mean_centered_13C_long <- mean_centered_13C %>% 
+  pivot_longer(
+    cols = c(Thr13C_mean, Val13C_mean, Leu13C_mean, Ile13C_mean, Phe13C_mean, Lys13C_mean),
+    names_to = "AminoAcid",
+    values_to = "MeanCentered_d13C"
+  ) %>%
+  mutate(
+    AminoAcid = gsub("13C_mean", "", AminoAcid)
+  )
+
+#run linear regression with mean-centered d13C EAA values and natural log-transformed distance from shore
+model_results <- mean_centered_13C_long %>%
+  group_by(AminoAcid) %>%
+  do({
+    fit <- lm(MeanCentered_d13C ~ log_dist, data = .)
+    
+    tidy_fit   <- tidy(fit)
+    glance_fit <- glance(fit)
+    
+    slope_row <- tidy_fit %>% filter(term == "log_dist")
+    
+    tibble(
+      AminoAcid = unique(.$AminoAcid),
+      
+      # Effect sizes
+      slope     = slope_row$estimate,
+      intercept = tidy_fit$estimate[tidy_fit$term == "(Intercept)"],
+      adj_r2    = glance_fit$adj.r.squared,
+      
+      # Test statistics
+      t_value   = slope_row$statistic,
+      df        = glance_fit$df.residual,
+      
+      # P-values
+      p_value   = slope_row$p.value,
+      p_adj     = p.adjust(slope_row$p.value, method = "BH"),
+      
+      # Optional equation string
+      equation  = paste0(
+        "y = ",
+        signif(slope_row$estimate, 3),
+        "x + ",
+        signif(tidy_fit$estimate[tidy_fit$term == "(Intercept)"], 3)
+      )
+    )
+  }) %>%
+  ungroup()
+
+model_results
+
+#select colors for plot
+color_palette <- c("#E69F00", "#56B4E9", "#CC79A7")
+
+#plot linear regressions faceted by EAAs
+d13C_EAA_linear_regressions <- ggplot(mean_centered_13C_long, aes(x = Distance_from_Shore, y = MeanCentered_d13C)) +
+  geom_point(
+    aes(color = Sample.Season, shape = Location),
+    size = 3,
+    alpha = 0.8,
+    position = position_jitter(width = 0.1, height = 0.1)
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    linetype = "dashed",
+    linewidth = 0.8
+  ) +
+  facet_wrap2(~ AminoAcid, scales = "free_y", ncol = 3, axes = TRUE, remove_labels = "x") +
+  scale_color_manual(values = color_palette, name = "Sample Season") +
+  ## natural log-transform x axis
+  scale_x_continuous(trans = "log", guide = "axis_logticks", 
+                     breaks=c(1, 10, 100), 
+                     name = "Distance from Shore (km)") +
+  scale_y_continuous(name = expression(atop("Mean-Centered", delta^13 * "C Value (‰)"))) +
+  labs(
+    color = "Sample Season",
+    shape = "Location"
+  ) +
+  guides(
+    color = guide_legend(nrow = 1, title = "Sample Season"),
+    shape = guide_legend(nrow = 1, title = "Location")
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    text = element_text(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    strip.text = element_text(face = "bold", size = 20, color = "black"),
+    legend.title = element_text(color = "black", size = 18),
+    legend.text  = element_text(color = "black", size = 16),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.spacing.y = unit(0.5, "pt")
+  )
+
+#show plot
+d13C_EAA_linear_regressions
+
+```
+Table S2. Linear regression of Hawaiian zooplankton d13C EAA statistics
+```{r}
+model_results
+```
+
+Figure 2. Mean-normalized carbon d13C EAA of Hawaiian Zooplankton (Boxplots)
+```{r}
+#rename the collection habitats to include a space between the first name and second name
+mean_centered_13C_long$Collection_Habitat[mean_centered_13C_long$Collection_Habitat == "Offshore Surface"] <- "Offshore\nSurface"
+mean_centered_13C_long$Collection_Habitat[mean_centered_13C_long$Collection_Habitat == "Offshore Deep"] <- "Offshore\nDeep"
+
+unique(mean_centered_13C_long$Collection_Habitat)
+
+#ile statistical tests
+ile_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Ile")
+
+#test assumptions for normality
+ile_13CEAA_shapiro_test <- shapiro.test(ile_13CEAA_data$MeanCentered_d13C)
+ile_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = ile_13CEAA_data)
+
+print(ile_13CEAA_shapiro_test)
+print(ile_13C_levene_test)
+
+#run anova
+ile_13C_anova_model <- aov(MeanCentered_d13C ~ Collection_Habitat, data = ile_13CEAA_data)
+
+#put results into a table
+anova_ile13C_tidy <- broom::tidy(ile_13C_anova_model)
+
+#extract numerator df, f value, and p-value for each collection habitat
+ile13C_collection_habitat_row <- anova_ile13C_tidy %>% filter(term == "Collection_Habitat")
+
+#extract denominator df from residuals row
+ile13C_residuals_row <- anova_ile13C_tidy %>% filter(term == "Residuals")
+
+#create a summary table with all key statistics
+ile13C_anova_summary <- tibble(
+  DF_num = ile13C_collection_habitat_row$df,           
+  DF_den = ile13C_residuals_row$df,               
+  F_value = ile13C_collection_habitat_row$statistic,    
+  p_value = ile13C_collection_habitat_row$p.value        
+)
+
+#calculate effect size (eta squared)
+ile13C_eta2 <- effectsize::eta_squared(ile_13C_anova_model, partial = FALSE) %>%
+  filter(Parameter == "Collection_Habitat") %>%
+  select(Eta2)
+
+#add effect size to anova summary
+ile13C_anova_summary <- bind_cols(ile13C_anova_summary, ile13C_eta2)
+
+#add a statistical test and amino acid label
+ile13C_anova_summary <- ile13C_anova_summary %>% 
+  mutate(AminoAcid = "Ile",
+         test = "anova")
+
+
+
+#phe statistical test
+phe_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Phe")
+
+#test assumptions for normality
+phe_13CEAA_shapiro_test <- shapiro.test(phe_13CEAA_data$MeanCentered_d13C)
+phe_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = phe_13CEAA_data)
+
+print(phe_13CEAA_shapiro_test)
+print(phe_13C_levene_test)
+
+#run anova
+phe_13C_anova_model <- aov(MeanCentered_d13C ~ Collection_Habitat, data = phe_13CEAA_data)
+
+#put results into a table
+anova_phe13C_tidy <- broom::tidy(phe_13C_anova_model)
+
+#extract numerator df, f value, and p-value for each collection habitat
+phe13C_collection_habitat_row <- anova_phe13C_tidy %>% filter(term == "Collection_Habitat")
+
+#extract denominator df from residuals row
+phe13C_residuals_row <- anova_phe13C_tidy %>% filter(term == "Residuals")
+
+#create a summary table with all key statistics
+phe13C_anova_summary <- tibble(
+  DF_num = phe13C_collection_habitat_row$df,            
+  DF_den = phe13C_residuals_row$df,              
+  F_value = phe13C_collection_habitat_row$statistic,    
+  p_value = phe13C_collection_habitat_row$p.value   
+)
+
+#calculate effect size (eta squared)
+phe13C_eta2 <- effectsize::eta_squared(phe_13C_anova_model, partial = FALSE) %>%
+  filter(Parameter == "Collection_Habitat") %>%
+  select(Eta2)
+
+#add effect size to anova summary
+phe13C_anova_summary <- bind_cols(phe13C_anova_summary, phe13C_eta2)
+
+#add a statistical test and amino acid label
+phe13C_anova_summary <- phe13C_anova_summary %>% 
+  mutate(AminoAcid = "Phe",
+         test = "anova")
+
+#perform a tukey hsd pairwise comparison since p<0.05 for global anova
+phe13C_tukey_results <- TukeyHSD(phe_13C_anova_model)
+
+# Tidy Tukey results and add significance stars
+phe13C_pairwise_results <- broom::tidy(phe13C_tukey_results) %>%
+  mutate(
+    p.adj.signif = case_when(
+      adj.p.value < 0.001 ~ "***",
+      adj.p.value < 0.01  ~ "**",
+      adj.p.value < 0.05  ~ "*",
+      TRUE                ~ "ns"
+    )
+  ) %>%
+  dplyr::rename(
+    comparison = contrast,
+    estimate = estimate,
+    conf.low = conf.low,
+    conf.high = conf.high,
+    p.adj = adj.p.value
+  )
+
+#add a statistical test and amino acid label
+phe13C_pairwise_results <- phe13C_pairwise_results %>% 
+  mutate(AminoAcid = "Phe", 
+         test = "pairwise-anova-tukey")
+         
+
+
+#thr statistical test
+thr_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Thr")
+
+#test assumptions for normality
+thr_13CEAA_shapiro_test <- shapiro.test(thr_13CEAA_data$MeanCentered_d13C)
+thr_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = thr_13CEAA_data)
+
+print(thr_13CEAA_shapiro_test)
+print(thr_13C_levene_test)
+
+#run anova
+thr_13C_anova_model <- aov(MeanCentered_d13C ~ Collection_Habitat, data = thr_13CEAA_data)
+
+#put results into a table
+anova_thr13C_tidy <- broom::tidy(thr_13C_anova_model)
+
+#extract numerator df, f value, and p-value for each collection habitat
+thr13C_collection_habitat_row <- anova_thr13C_tidy %>% filter(term == "Collection_Habitat")
+
+#extract denominator df from residuals row
+thr13C_residuals_row <- anova_thr13C_tidy %>% filter(term == "Residuals")
+
+#create a summary table with all key statistics
+thr13C_anova_summary <- tibble(
+  DF_num = thr13C_collection_habitat_row$df,
+  DF_den = thr13C_residuals_row$df,
+  F_value = thr13C_collection_habitat_row$statistic,
+  p_value = thr13C_collection_habitat_row$p.value
+)
+
+#calculate effect size (eta squared)
+thr13C_eta2 <- effectsize::eta_squared(thr_13C_anova_model, partial = FALSE) %>%
+  filter(Parameter == "Collection_Habitat") %>%
+  select(Eta2)
+
+#add effect size to anova summary
+thr13C_anova_summary <- bind_cols(thr13C_anova_summary, thr13C_eta2)
+
+#add a statistical test and amino acid label
+thr13C_anova_summary <- thr13C_anova_summary %>% 
+  mutate(AminoAcid = "Thr",
+         test = "anova")
+
+#perform a tukey hsd pairwise comparison since p<0.05 for global anova
+thr13C_tukey_results <- TukeyHSD(thr_13C_anova_model)
+
+# Tidy Tukey results and add significance stars
+thr13C_pairwise_results <- broom::tidy(thr13C_tukey_results) %>%
+  mutate(
+    p.adj.signif = case_when(
+      adj.p.value < 0.001 ~ "***",
+      adj.p.value < 0.01  ~ "**",
+      adj.p.value < 0.05  ~ "*",
+      TRUE                ~ "ns"
+    )
+  ) %>%
+  dplyr::rename(
+    comparison = contrast,
+    estimate = estimate,
+    conf.low = conf.low,
+    conf.high = conf.high,
+    p.adj = adj.p.value
+  )
+
+#add a statistical test and amino acid label
+thr13C_pairwise_results <- thr13C_pairwise_results %>% 
+  mutate(AminoAcid = "Thr", 
+         test = "pairwise-anova-tukey")
+
+
+
+#leu statistical test
+leu_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Leu")
+
+#test assumptions for normality
+leu_13CEAA_shapiro_test <- shapiro.test(leu_13CEAA_data$MeanCentered_d13C)
+leu_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = leu_13CEAA_data)
+
+print(leu_13CEAA_shapiro_test)
+print(leu_13C_levene_test)
+
+#run anova
+leu_13C_anova_model <- aov(MeanCentered_d13C ~ Collection_Habitat, data = leu_13CEAA_data)
+
+#put results into a table
+anova_leu13C_tidy <- broom::tidy(leu_13C_anova_model)
+
+#extract numerator df, f value, and p-value for each collection habitat
+leu13C_collection_habitat_row <- anova_leu13C_tidy %>% filter(term == "Collection_Habitat")
+
+#extract denominator df from residuals row
+leu13C_residuals_row <- anova_leu13C_tidy %>% filter(term == "Residuals")
+
+#create a summary table with all key statistics
+leu13C_anova_summary <- tibble(
+  DF_num = leu13C_collection_habitat_row$df,           
+  DF_den = leu13C_residuals_row$df,              
+  F_value = leu13C_collection_habitat_row$statistic,   
+  p_value = leu13C_collection_habitat_row$p.value        
+)
+
+#calculate effect size (eta squared)
+leu13C_eta2 <- effectsize::eta_squared(leu_13C_anova_model, partial = FALSE) %>%
+  filter(Parameter == "Collection_Habitat") %>%
+  select(Eta2)
+
+#add effect size to anova summary
+leu13C_anova_summary <- bind_cols(leu13C_anova_summary, leu13C_eta2)
+
+#add a statistical test and amino acid label
+leu13C_anova_summary <- leu13C_anova_summary %>% 
+  mutate(AminoAcid = "Leu",
+         test = "anova")
+
+#combine all anova results into one table
+anova_13C_results_all <- rbind(leu13C_anova_summary, thr13C_anova_summary, phe13C_anova_summary, ile13C_anova_summary)
+
+
+#val statistical test
+val_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Val")
+
+#test assumptions for normality
+val_13CEAA_shapiro_test <- shapiro.test(val_13CEAA_data$MeanCentered_d13C)
+val_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = val_13CEAA_data)
+
+print(val_13CEAA_shapiro_test)
+print(val_13C_levene_test)
+
+#run kruskal-wallis
+val13C_kw <- kruskal.test(MeanCentered_d13C ~ Collection_Habitat, data = val_13CEAA_data)
+
+#put results into a table
+val13C_kw_summary <- tidy(val13C_kw)
+
+# calculate epsilon squared effect size for kruskal-wallis
+# formula: ε² = (H - k + 1) / (n - k)
+H_val13C <- val13C_kw$statistic
+k_val13C <- length(unique(val_13CEAA_data$Collection_Habitat))
+n_val13C <- nrow(val_13CEAA_data)
+epsilon_sq_13C <- (H_val13C - k_val13C + 1) / (n_val13C - k_val13C)
+epsilon_sq_13C <- max(epsilon_sq_13C, 0)
+
+#add effect size to summary table
+val13C_kw_summary$epsilon_sq_13C <- epsilon_sq_13C
+
+#label amino acid
+val13C_kw_summary$AminoAcid <- "Val"
+
+print(val13C_kw_summary)
+
+
+#lys statistical test
+lys_13CEAA_data <- mean_centered_13C_long %>% filter(AminoAcid == "Lys")
+
+#test assumptions for normality
+lys_13CEAA_shapiro_test <- shapiro.test(lys_13CEAA_data$MeanCentered_d13C)
+lys_13C_levene_test <- car::leveneTest(MeanCentered_d13C ~ Collection_Habitat, data = lys_13CEAA_data)
+
+print(lys_13CEAA_shapiro_test)
+print(lys_13C_levene_test)
+
+#run kruskal-wallis
+lys13C_kw <- kruskal.test(MeanCentered_d13C ~ Collection_Habitat, data = lys_13CEAA_data)
+
+#put results into a table
+lys13C_kw_summary <- tidy(lys13C_kw)
+
+# calculate epsilon squared effect size for kruskal-wallis
+# formula: ε² = (H - k + 1) / (n - k)
+H_lys13C <- lys13C_kw$statistic
+k_lys13C <- length(unique(lys_13CEAA_data$Collection_Habitat))
+n_lys13C <- nrow(lys_13CEAA_data)
+epsilon_sq_13C <- (H_lys13C - k_lys13C + 1) / (n_lys13C - k_lys13C)
+epsilon_sq_13C <- max(epsilon_sq_13C, 0)
+
+#add effect size to summary table
+lys13C_kw_summary$epsilon_sq_13C <- epsilon_sq_13C
+
+#label amino acid
+lys13C_kw_summary$AminoAcid <- "Lys"
+
+print(lys13C_kw_summary)
+
+kw_13Cresults_all <- rbind(val13C_kw_summary, lys13C_kw_summary)
+
+#rename columns, select comparisons, p-values, and significance stars
+
+thr13C_pairwise_clean <- thr13C_pairwise_results %>%
+  dplyr::rename(
+    Comparison = comparison,
+    P_adjusted = p.adj,
+    Significance = p.adj.signif
+  ) %>%
+  dplyr::select(Comparison, P_adjusted, Significance)
+
+phe13C_pairwise_clean <- phe13C_pairwise_results %>%
+  dplyr::rename(
+    Comparison = comparison,
+    P_adjusted = p.adj,
+    Significance = p.adj.signif
+  ) %>%
+  dplyr::select(Comparison, P_adjusted, Significance)
+
+#add an amino acid column
+thr13C_pairwise_clean <- thr13C_pairwise_clean %>% mutate(AminoAcid = "Thr")
+phe13C_pairwise_clean <- phe13C_pairwise_clean %>% mutate(AminoAcid = "Phe")
+
+#combine pairwise results into one dataframe
+combined_results_13C <- bind_rows(
+  thr13C_pairwise_clean,
+  phe13C_pairwise_clean
+) %>%
+  select(AminoAcid, everything()) %>%  
+  arrange(AminoAcid)
+
+#split comparison columns into two separate groups
+combined_results_13C <- combined_results_13C %>%
+  separate(Comparison, into = c("group1", "group2"), sep = "-", remove = FALSE)
+
+#add a y-position for significance brackets in the boxplot figure
+y_positions_13C <- mean_centered_13C_long %>%
+  dplyr::group_by(AminoAcid) %>%
+  dplyr::summarise(y.position = max(MeanCentered_d13C, na.rm = TRUE) + 0.5)
+
+#add y-positions to combined results dataframe
+combined_results_13C <- combined_results_13C %>%
+  left_join(y_positions_13C, by = "AminoAcid")
+
+#filter only for significant results so no significance bars for non-significant results
+combined_results_13C_filtered <- combined_results_13C %>%
+  dplyr::filter(Significance %in% c("*", "**", "***"))
+
+#compute sample sizes to add to x-axis labels
+sample_sizes_13C <- mean_centered_13C_long %>%
+  dplyr::group_by(Collection_Habitat) %>%
+  dplyr::summarise(n = n()/6)
+
+#create the x-axis label
+x_labels_13C <- sample_sizes_13C %>%
+  dplyr::mutate(label = paste0(Collection_Habitat, "\n(n = ", n, ")")) %>%
+  dplyr::select(Collection_Habitat, label) %>%
+  deframe()
+
+
+#color blind friendly colors for plot
+colors <- c("Reef" = "#1b9e77",
+            "Offshore\nSurface" = "#d95f02",
+            "Offshore\nDeep" = "#7570b3")
+
+# Base plot with corrected outlier aesthetics
+boxplot_13C <- ggplot(
+  mean_centered_13C_long,
+  aes(x = Collection_Habitat, y = MeanCentered_d13C)
+) +
+  geom_boxplot(
+    aes(fill = Collection_Habitat),
+    outlier.shape = 21,          
+    outlier.size = 2.5,
+    outlier.colour = "black",    
+    outlier.fill = NULL          
+  ) +
+  scale_fill_manual(values = colors) +
+  ggh4x::facet_wrap2(
+    ~ AminoAcid,
+    scales = "free_y",
+    axes = TRUE,
+    remove_labels = "x"
+  )
+
+# Add stats, scales, labels, and theme
+boxplot_13C_pub <- boxplot_13C +
+  ggpubr::stat_pvalue_manual(
+    combined_results_13C_filtered,
+    label = "Significance",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    tip.length = 0.01,
+    bracket.size = 0.8,
+    text.size = 20,
+    size = 6,
+    fontface = "bold"
+  ) +
+  scale_x_discrete(
+    limits = c("Reef", "Offshore\nSurface", "Offshore\nDeep")
+  ) +
+  labs(
+    x = "\nZooplankton Collection Habitat",
+    y = expression(atop("Mean-Centered", delta^13 * "C Value (‰)"))
+  ) +
+  theme_minimal(base_size = 19) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold", color = "black"),
+    axis.text.x = element_text(size = 17, color = "black"),
+    axis.text.y = element_text(size = 19, color = "black"),
+    axis.title.x = element_text(size = 19, color = "black"),
+    axis.title.y = element_text(size = 19, color = "black"),
+    plot.title = element_text(size = 23, color = "black", face = "bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.background = element_blank(),
+    panel.background = element_blank()
+  )
+
+print(boxplot_13C_pub)
+```
+Table S3. Boxplot Hawaiian Zooplankton d13C EAA statistics
+```{r}
+#anova results
+anova_13C_results_all
+
+#kruskal-wallis results
+kw_13Cresults_all
+
+#pairwise results (tukey's) for significant anova results
+combined_results_13C
+```
+
+Figure S2. LDA of mean-normalized carbon d13C EAA of Hawaiian Zooplankton
+
+```{r}
+#prepare lda data
+lda_d13C_EAA <- mean_centered_13C %>% 
+  select(Sample.ID, Collection_Habitat, Thr13C_mean, Val13C_mean, Leu13C_mean,
+         Ile13C_mean, Phe13C_mean, Lys13C_mean) %>% 
+  na.omit()
+
+#set groupings as factor in desired order
+lda_d13C_EAA$Group <- factor(lda_d13C_EAA$Collection_Habitat,
+                         levels = c("Reef", "Offshore Surface", "Offshore Deep"))
+
+#set predictors and response
+X <- lda_d13C_EAA %>% 
+  select(Thr13C_mean, Val13C_mean, Leu13C_mean, Ile13C_mean, Phe13C_mean, Lys13C_mean)
+
+y <- lda_d13C_EAA$Group
+
+#perform lda
+lda_d13C_EAA_model <- lda(y ~ ., data = X)
+
+#lda scores
+lda_d13C_EAA_pred <- predict(lda_d13C_EAA_model)
+
+lda_d13C_EAA_scores <- as.data.frame(lda_d13C_EAA_pred$x)
+
+lda_d13C_EAA_scores$Group <- y
+
+#variance explained
+prop_var_13C <- lda_d13C_EAA_model$svd^2 / sum(lda_d13C_EAA_model$svd^2)
+
+x_lab_13C <- paste0("LD1 (", round(prop_var_13C[1] * 100, 1), "%)")
+
+y_lab_13C <- paste0("LD2 (", round(prop_var_13C[2] * 100, 1), "%)")
+
+#set colors
+custom_colors_13C <- c(
+  "Reef" = brewer.pal(3, "Dark2")[1],           
+  "Offshore Surface" = brewer.pal(3, "Dark2")[2],
+  "Offshore Deep" = brewer.pal(3, "Dark2")[3])
+
+#plot lda (ld1 and ld2) with 95% confidence intervals
+lda_plot_13C <- ggplot(lda_d13C_EAA_scores, aes(x = LD1, y = LD2, fill = Group)) +
+  stat_ellipse(aes(color = Group),
+    type = "norm",
+    level = 0.95,
+    size = 1,
+    alpha = 0.6) +
+  geom_point(size = 4,
+    stroke = 1.2,
+    shape = 21,
+    color = "black") +
+  scale_fill_manual(values = custom_colors_13C) +
+  scale_color_manual(values = custom_colors_13C) +
+  labs(x = x_lab_13C,
+    y = y_lab_13C,
+    fill = "Zooplankton\nCollection Habitat",
+    color = "Zooplankton\nCollection Habitat",
+    title = NULL) +
+  theme_minimal(base_size = 18) + 
+  theme(text = element_text(color = "black"),   
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(color = "black"),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black")) +
+  theme(panel.border = element_blank())
+
+print(lda_plot_13C)
+
+#run permanova
+permanova <- adonis2(X ~ y, method = "euclidean")
+
+pairwise_permanova <- function(X, group, method = "euclidean", p.adjust.method = "bonferroni") {
+  
+  groups <- unique(group)
+  combos <- combn(groups, 2)
+  
+  results <- data.frame(
+    Group1 = character(),
+    Group2 = character(),
+    F = numeric(),
+    R2 = numeric(),
+    p = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in 1:ncol(combos)) {
+    g1 <- combos[1, i]
+    g2 <- combos[2, i]
+  
+    idx <- group %in% c(g1, g2)
+    
+    subX <- X[idx, ]
+    subGroup <- droplevels(group[idx])
+    
+    test <- adonis2(subX ~ subGroup, method = method)
+    
+    results <- rbind(
+      results,
+      data.frame(
+        Group1 = g1,
+        Group2 = g2,
+        F = test$F[1],
+        R2 = test$R2[1],
+        p = test$`Pr(>F)`[1]))}
+  
+#adjust p-values
+  results$padj <- p.adjust(results$p, method = p.adjust.method)
+  
+  return(results)
+}
+
+#pairwise permanova
+pairwise_results <- pairwise_permanova(X, y, method = "euclidean", p.adjust.method = "bonferroni")
+print(pairwise_results)
+
+dispersion <- betadisper(dist(X), y)
+print(anova(dispersion))
+
+loading_strength <- as.data.frame(lda_d13C_EAA_model$scaling)
+loading_strength$Variable <- rownames(loading_strength)
+loading_strength <- loading_strength %>%
+  mutate(abs_LD1 = abs(LD1)) %>%
+  arrange(desc(abs_LD1))
+
+cat("\nTop variables contributing to LD1:\n")
+print(loading_strength[, c("Variable", "LD1", "abs_LD1")])
+
+lda_cv <- lda(y ~ ., data = X, CV = TRUE)
+conf_matrix <- table(Predicted = lda_cv$class, Actual = y)
+cat("\nLOOCV Confusion Matrix:\n")
+print(conf_matrix)
+
+accuracy <- mean(lda_cv$class == y)
+cat(sprintf("\nLOOCV Accuracy: %.2f%%\n", accuracy * 100))
+
+print(lda_plot_13C)
+```
+Table S5. PERMANOVA comparing d13C EAA values of Hawaiian Zooplankton (accompanying LDA)
+```{r}
+permanova
+
+pairwise_results
+```
+
+
+
+Figure S1. Maldivian nearshore vs. offshore planktivore d13C EAA (Boxplot)
+
+```{r}
+#read in Maldivian consumer data
+Skinner <- read.csv("/Users/blakestoner-osborne/Desktop/Desktop - Blake’s MacBook Pro/Nearshore_Offshore_Isotopes/Skinner_FFS.csv")
+
+#mean-center Malidivian consumer data
+mean_centered_Skinner <- Skinner %>%
+  select(SampleName, Group, Thr13C, Val13C, Leu13C, Phe13C, Lys13C) %>%
+  filter(Group %in% c("PelagicPlankton", "NocturnalReefPlankton", "DiurnalReefPlankton")) %>% 
+  mutate(
+    EAA_mean = (Thr13C + Val13C + Leu13C + Lys13C + Phe13C) / 5,
+    Thr13C_mean = Thr13C - EAA_mean,
+    Val13C_mean = Val13C - EAA_mean,
+    Leu13C_mean = Leu13C - EAA_mean,
+    Lys13C_mean = Lys13C - EAA_mean,
+    Phe13C_mean = Phe13C - EAA_mean)
+
+#turn diurnal reef plankton and nocturnal reef plankton into just reef plankton
+mean_centered_Skinner <- mean_centered_Skinner %>%
+  mutate(
+    Group_mod = case_when(
+      Group %in% c("DiurnalReefPlankton", "NocturnalReefPlankton") ~ "ReefPlankton",
+      TRUE ~ as.character(Group)
+    )
+  )
+
+#turn data into long format
+Skinner_df_long <- mean_centered_Skinner %>%
+  pivot_longer(
+    cols = ends_with("_mean"),
+    names_to = "AminoAcid",
+    values_to = "d13C"
+  ) %>%
+  mutate(
+    AminoAcid = str_remove(AminoAcid, "13C_mean"),
+    Group = factor(Group_mod, levels = c("ReefPlankton", "PelagicPlankton")),
+    AminoAcid = factor(AminoAcid, levels = sort(unique(AminoAcid)))
+  ) %>%
+  filter(AminoAcid %in% c("Val", "Thr", "Leu", "Lys", "Ile", "Phe"))
+
+#make groups factors and keep d13C values as numeric
+Skinner_df_long$Group_mod <- as.factor(Skinner_df_long$Group_mod)
+Skinner_df_long$d13C <- as.numeric(Skinner_df_long$d13C)
+
+#run stats for phe
+Skinner_phe_data <- Skinner_df_long %>% filter(AminoAcid == "Phe")
+
+#test for normality
+Skinner_phe_shapiro_test <- shapiro.test(Skinner_phe_data$d13C)
+Skinner_phe_levene_test <- car::leveneTest(d13C ~ Group_mod, data = Skinner_phe_data)
+
+print(Skinner_phe_levene_test)
+print(Skinner_phe_shapiro_test)
+
+#run mann-whitney u-test
+Skinner_phe_mwu <- wilcox.test(d13C ~ Group_mod, data = Skinner_phe_data, exact = TRUE)
+Skinner_phe_tidy <- broom::tidy(Skinner_phe_mwu)
+
+#calculate effect size
+Skinner_phe_effsize <- rstatix::wilcox_effsize(Skinner_phe_data, d13C ~ Group_mod, ci = TRUE)
+
+#other descriptive statistics
+Skinner_phe_summary <- Skinner_phe_data %>%
+  dplyr::group_by(Group_mod) %>%
+  dplyr::summarise(
+    n = n(),
+    median = median(d13C, na.rm = TRUE),
+    IQR = IQR(d13C, na.rm = TRUE)
+  )
+
+#combine results into a clean table
+Skinner_phe_results <- tibble(
+  AminoAcid = "Phe",
+  W = Skinner_phe_tidy$statistic,
+  p_value = Skinner_phe_tidy$p.value,
+  Effect_r = Skinner_phe_effsize$effsize,
+  Effect_CI_low = Skinner_phe_effsize$conf.low,
+  Effect_CI_high = Skinner_phe_effsize$conf.high,
+  n_Reef = Skinner_phe_summary$n[Skinner_phe_summary$Group_mod == "ReefPlankton"],
+  n_Pelagic = Skinner_phe_summary$n[Skinner_phe_summary$Group_mod == "PelagicPlankton"],
+  Median_Reef = Skinner_phe_summary$median[Skinner_phe_summary$Group_mod == "ReefPlankton"],
+  Median_Pelagic = Skinner_phe_summary$median[Skinner_phe_summary$Group_mod == "PelagicPlankton"]
+)
+
+
+#run stats for thr
+Skinner_thr_data <- Skinner_df_long %>% filter(AminoAcid == "Thr")
+
+#test for normality
+Skinner_thr_shapiro_test <- shapiro.test(Skinner_thr_data$d13C)
+Skinner_thr_levene_test <- car::leveneTest(d13C ~ Group_mod, data = Skinner_thr_data)
+
+print(Skinner_thr_levene_test)
+print(Skinner_thr_shapiro_test)
+
+#run mann-whitney u-test
+Skinner_thr_mwu <- wilcox.test(d13C ~ Group_mod, data = Skinner_thr_data, exact = TRUE)
+Skinner_thr_tidy <- broom::tidy(Skinner_thr_mwu)
+
+#calculate effect size
+Skinner_thr_effsize <- rstatix::wilcox_effsize(Skinner_thr_data, d13C ~ Group_mod, ci = TRUE)
+
+#other descriptive statistics
+Skinner_thr_summary <- Skinner_thr_data %>%
+  dplyr::group_by(Group_mod) %>%
+  dplyr::summarise(
+    n = n(),
+    median = median(d13C, na.rm = TRUE),
+    IQR = IQR(d13C, na.rm = TRUE)
+  )
+
+#combine results into a clean table
+Skinner_thr_results <- tibble(
+  AminoAcid = "Thr",
+  W = Skinner_thr_tidy$statistic,
+  p_value = Skinner_thr_tidy$p.value,
+  Effect_r = Skinner_thr_effsize$effsize,
+  Effect_CI_low = Skinner_thr_effsize$conf.low,
+  Effect_CI_high = Skinner_thr_effsize$conf.high,
+  n_Reef = Skinner_thr_summary$n[Skinner_thr_summary$Group_mod == "ReefPlankton"],
+  n_Pelagic = Skinner_thr_summary$n[Skinner_thr_summary$Group_mod == "PelagicPlankton"],
+  Median_Reef = Skinner_thr_summary$median[Skinner_thr_summary$Group_mod == "ReefPlankton"],
+  Median_Pelagic = Skinner_thr_summary$median[Skinner_thr_summary$Group_mod == "PelagicPlankton"]
+)
+
+
+#run stats for val
+Skinner_val_data <- Skinner_df_long %>% filter(AminoAcid == "Val")
+
+#test for normality
+Skinner_val_shapiro_test <- shapiro.test(Skinner_val_data$d13C)
+Skinner_val_levene_test <- car::leveneTest(d13C ~ Group_mod, data = Skinner_val_data)
+
+print(Skinner_val_levene_test)
+print(Skinner_val_shapiro_test)
+
+#run mann-whitney u-test
+Skinner_val_mwu <- wilcox.test(d13C ~ Group_mod, data = Skinner_val_data, exact = TRUE)
+Skinner_val_tidy <- broom::tidy(Skinner_val_mwu)
+
+#calculate effect size
+Skinner_val_effsize <- rstatix::wilcox_effsize(Skinner_val_data, d13C ~ Group_mod, ci = TRUE)
+
+#other descriptive statistics
+Skinner_val_summary <- Skinner_val_data %>%
+  dplyr::group_by(Group_mod) %>%
+  dplyr::summarise(
+    n = n(),
+    median = median(d13C, na.rm = TRUE),
+    IQR = IQR(d13C, na.rm = TRUE)
+  )
+
+#combine results into a clean table
+Skinner_val_results <- tibble(
+  AminoAcid = "Val",
+  W = Skinner_val_tidy$statistic,
+  p_value = Skinner_val_tidy$p.value,
+  Effect_r = Skinner_val_effsize$effsize,
+  Effect_CI_low = Skinner_val_effsize$conf.low,
+  Effect_CI_high = Skinner_val_effsize$conf.high,
+  n_Reef = Skinner_val_summary$n[Skinner_val_summary$Group_mod == "ReefPlankton"],
+  n_Pelagic = Skinner_val_summary$n[Skinner_val_summary$Group_mod == "PelagicPlankton"],
+  Median_Reef = Skinner_val_summary$median[Skinner_val_summary$Group_mod == "ReefPlankton"],
+  Median_Pelagic = Skinner_val_summary$median[Skinner_val_summary$Group_mod == "PelagicPlankton"]
+)
+
+
+#run stats for leu
+Skinner_leu_data <- Skinner_df_long %>% filter(AminoAcid == "Leu")
+
+#test for normality
+Skinner_leu_shapiro_test <- shapiro.test(Skinner_leu_data$d13C)
+Skinner_leu_levene_test <- car::leveneTest(d13C ~ Group_mod, data = Skinner_leu_data)
+
+print(Skinner_leu_shapiro_test)
+print(Skinner_leu_levene_test)
+
+#welch's t-test
+Skinner_leu_ttest <- t.test(d13C ~ Group_mod, data = Skinner_leu_data, var.equal = FALSE)
+Skinner_leu_tidy <- broom::tidy(Skinner_leu_ttest)
+
+#calculate effect size
+Skinner_leu_effsize <- rstatix::cohens_d(Skinner_leu_data, d13C ~ Group_mod, var.equal = FALSE, ci = TRUE)
+
+#other descriptive statistics
+Skinner_leu_summary <- Skinner_leu_data %>%
+  dplyr::group_by(Group_mod) %>%
+  dplyr::summarise(
+    n = n(),
+    mean = mean(d13C, na.rm = TRUE),
+    sd = sd(d13C, na.rm = TRUE))
+
+#combine results into table
+Skinner_leu_results <- tibble(
+  AminoAcid = "Leu",
+  t = Skinner_leu_tidy$statistic,
+  df = Skinner_leu_tidy$parameter,
+  p_value = Skinner_leu_tidy$p.value,
+  CI_low = Skinner_leu_tidy$conf.low,
+  CI_high = Skinner_leu_tidy$conf.high,
+  Effect_d = Skinner_leu_effsize$effsize,
+  Effect_CI_low = Skinner_leu_effsize$conf.low,
+  Effect_CI_high = Skinner_leu_effsize$conf.high,
+  n_Reef = Skinner_leu_summary$n[Skinner_leu_summary$Group_mod == "ReefPlankton"],
+  n_Pelagic = Skinner_leu_summary$n[Skinner_leu_summary$Group_mod == "PelagicPlankton"],
+  Mean_Reef = Skinner_leu_summary$mean[Skinner_leu_summary$Group_mod == "ReefPlankton"],
+  SD_Reef = Skinner_leu_summary$sd[Skinner_leu_summary$Group_mod == "ReefPlankton"],
+  Mean_Pelagic = Skinner_leu_summary$mean[Skinner_leu_summary$Group_mod == "PelagicPlankton"],
+  SD_Pelagic = Skinner_leu_summary$sd[Skinner_leu_summary$Group_mod == "PelagicPlankton"]
+) %>%
+  mutate(
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  )
+
+
+#run stats for lys
+Skinner_lys_data <- Skinner_df_long %>% filter(AminoAcid == "Lys")
+
+#test for normality
+Skinner_lys_shapiro_test <- shapiro.test(Skinner_lys_data$d13C)
+Skinner_lys_levene_test <- car::leveneTest(d13C ~ Group_mod, data = Skinner_lys_data)
+
+print(Skinner_lys_shapiro_test)
+print(Skinner_lys_levene_test)
+
+#welch's t-test
+Skinner_lys_ttest <- t.test(d13C ~ Group_mod, data = Skinner_lys_data, var.equal = FALSE)
+Skinner_lys_tidy <- broom::tidy(Skinner_lys_ttest)
+
+#calculate effect size
+Skinner_lys_effsize <- rstatix::cohens_d(Skinner_lys_data, d13C ~ Group_mod, var.equal = FALSE, ci = TRUE)
+
+#other descriptive statistics
+Skinner_lys_summary <- Skinner_lys_data %>%
+  dplyr::group_by(Group_mod) %>%
+  dplyr::summarise(
+    n = n(),
+    mean = mean(d13C, na.rm = TRUE),
+    sd = sd(d13C, na.rm = TRUE))
+
+#combine results into table
+Skinner_lys_results <- tibble(
+  AminoAcid = "Lys",
+  t = Skinner_lys_tidy$statistic,
+  df = Skinner_lys_tidy$parameter,
+  p_value = Skinner_lys_tidy$p.value,
+  CI_low = Skinner_lys_tidy$conf.low,
+  CI_high = Skinner_lys_tidy$conf.high,
+  Effect_d = Skinner_lys_effsize$effsize,
+  Effect_CI_low = Skinner_lys_effsize$conf.low,
+  Effect_CI_high = Skinner_lys_effsize$conf.high,
+  n_Reef = Skinner_lys_summary$n[Skinner_lys_summary$Group_mod == "ReefPlankton"],
+  n_Pelagic = Skinner_lys_summary$n[Skinner_lys_summary$Group_mod == "PelagicPlankton"],
+  Mean_Reef = Skinner_lys_summary$mean[Skinner_lys_summary$Group_mod == "ReefPlankton"],
+  SD_Reef = Skinner_lys_summary$sd[Skinner_lys_summary$Group_mod == "ReefPlankton"],
+  Mean_Pelagic = Skinner_lys_summary$mean[Skinner_lys_summary$Group_mod == "PelagicPlankton"],
+  SD_Pelagic = Skinner_lys_summary$sd[Skinner_lys_summary$Group_mod == "PelagicPlankton"]
+) %>%
+  mutate(
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  )
+
+#combine all welch's and all mann-whitney results
+welch_results <- bind_rows(Skinner_lys_results, Skinner_leu_results)
+mannu_results <- bind_rows(Skinner_val_results, Skinner_thr_results, Skinner_phe_results)
+
+#apply BH correction and add significance levels
+welch_results <- welch_results %>%
+  mutate(
+    p_adj = p.adjust(p_value, method = "BH"),
+    Significance_adj = case_when(
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE          ~ "ns"
+    )
+  )
+
+mannu_results <- mannu_results %>%
+  mutate(
+    p_adj = p.adjust(p_value, method = "BH"),
+    p_adj_formatted = formatC(p_adj, format = "f", digits = 3),
+    Significance_adj = case_when(
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE          ~ "ns"
+    )
+  )
+
+#combine mann-whitney and welch's results into one df
+Skinner_stats_combined <- bind_rows(
+  welch_results %>% mutate(group1 = "Reef\nPlankton", group2 = "Pelagic\nPlankton"),
+  mannu_results %>% mutate(group1 = "Reef\nPlankton", group2 = "Pelagic\nPlankton")
+) %>%
+  dplyr::select(AminoAcid, group1, group2, Significance_adj) %>%
+  dplyr::filter(Significance_adj %in% c("*", "**", "***"))
+
+#prepare df to match significance code
+Skinner_df_long <- Skinner_df_long %>%
+  dplyr::mutate(
+    Group2 = case_when(
+      Group == "ReefPlankton" ~ "Reef\nPlankton",
+      Group == "PelagicPlankton" ~ "Pelagic\nPlankton"
+    ),
+    Group2 = factor(Group2, levels = c("Reef\nPlankton", "Pelagic\nPlankton")),
+    AminoAcid = factor(AminoAcid, levels = sort(unique(AminoAcid)))
+  )
+
+#assign colors that match Hawaii zooplankton color scheme, offshore planktivores in Skinner were deep-living so used offshore deep purple from Hawaii zooplankton for offshore planktivores
+Skinner_colors <- c(
+  "Reef\nPlankton" = "#1b9e77",
+  "Pelagic\nPlankton" = "#7570b3"
+)
+
+#add y coordinates for significance brackets
+y_pos_df <- Skinner_df_long %>%
+  dplyr::group_by(AminoAcid) %>%
+  dplyr::summarise(
+    y.position = max(d13C, na.rm = TRUE) +
+      0.3 * diff(range(d13C, na.rm = TRUE))
+  )
+
+Skinner_stats_combined <- Skinner_stats_combined %>%
+  left_join(y_pos_df, by = "AminoAcid")
+
+#compute sample sizes
+Skinner_sample_sizes <- Skinner_df_long %>%
+  dplyr::group_by(Group2) %>%
+  dplyr::summarise(n = n_distinct(SampleName))
+
+
+# Base plot with corrected outlier aesthetics
+Skinner_boxplot_13C <- ggplot(
+  Skinner_df_long,
+  aes(x = Group2, y = d13C)
+) +
+  geom_boxplot(
+    aes(fill = Group2),
+    outlier.shape = 21,          
+    outlier.size = 2.5,
+    outlier.colour = "black",    
+    outlier.fill = NULL          
+  ) +
+  scale_fill_manual(values = Skinner_colors) +
+  ggh4x::facet_wrap2(
+    ~ AminoAcid,
+    scales = "free_y",
+    axes = TRUE,
+    remove_labels = "x"
+  )
+
+# Add stats, scales, labels, and theme
+Skinner_boxplot_13C_pub <- Skinner_boxplot_13C +
+  ggpubr::stat_pvalue_manual(
+    Skinner_stats_combined,
+    label = "Significance_adj",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    tip.length = 0.01,
+    bracket.size = 0.8,
+    text.size = 20,
+    size = 6,
+    fontface = "bold"
+  ) +
+  scale_x_discrete(
+    limits = c("Reef\nPlankton", "Pelagic\nPlankton")
+  ) +
+  labs(
+    x = "\nPresumed Consumer Diet",
+    y = expression(atop("Mean-Centered", delta^13 * "C Value (‰)"))
+  ) +
+  theme_minimal(base_size = 19) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold", color = "black"),
+    axis.text.x = element_text(size = 17, color = "black"),
+    axis.text.y = element_text(size = 19, color = "black"),
+    axis.title.x = element_text(size = 19, color = "black"),
+    axis.title.y = element_text(size = 19, color = "black"),
+    plot.title = element_text(size = 23, color = "black", face = "bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.background = element_blank(),
+    panel.background = element_blank()
+  )
+
+print(Skinner_boxplot_13C_pub)
+```
+Table S4. Statistical tests for Maldivian planktivore d13C EAA values 
+```{r}
+#welch's t test results
+welch_results
+
+#mann whitney u test results
+mannu_results
+```
+
+Figure 3. LDA with Stahl et al. 2023 primary producer and Hawaiian zooplankton d13C EAA data
+```{r}
+#read in stahl d13C EAA primary producer dataset with hawaiian zooplankton d13C EAA data
+stahl <- read.csv("/Users/blakestoner-osborne/Desktop/Desktop - Blake’s MacBook Pro/Nearshore_Offshore_Isotopes/Stahl_and_cyano_13C.csv")
+
+#mean-center all values
+stahl <- stahl %>%
+  select(Group, Thr, Val, Leu, Ile, Phe, Lys) %>%
+  mutate(EAA_mean = (Thr + Val + Leu + Ile + Phe + Lys) / 6,
+         d13C_Ile_mean = Ile - EAA_mean,
+         d13C_Val_mean = Val - EAA_mean,
+         d13C_Leu_mean = Leu - EAA_mean,
+         d13C_Phe_mean = Phe - EAA_mean,
+         d13C_Thr_mean = Thr - EAA_mean,
+         d13C_Lys_mean = Lys - EAA_mean) %>%
+  select(Group, d13C_Ile_mean, d13C_Val_mean, d13C_Leu_mean, d13C_Phe_mean, d13C_Thr_mean, d13C_Lys_mean) %>%
+  na.omit()
+
+#set group as a factor
+stahl$Group <- as.factor(stahl$Group)
+
+#define training and test groups
+training_groups <- c("Diatom", "Dinoflagellate", "Prasinophyte", "Raphidophyte")
+test_groups <- c("HawaiiReefPlankton", "HawaiiOffshoreSurfacePlankton", "HawaiiOffshoreDeepPlankton")
+
+#split dataset into training and test
+training_data <- stahl %>% filter(Group %in% training_groups)
+test_data <- stahl %>% filter(Group %in% test_groups) %>%
+  dplyr::rename(Sample_Type = Group)
+
+#perform an lda with leave one out cross validation
+lda_cv <- lda(Group ~ d13C_Thr_mean + d13C_Leu_mean + d13C_Val_mean + d13C_Ile_mean + d13C_Phe_mean + d13C_Lys_mean,
+              data = training_data, CV = TRUE)
+
+#fit training data with an lda model
+lda_model <- lda(Group ~ d13C_Thr_mean + d13C_Leu_mean + d13C_Val_mean +
+                           d13C_Ile_mean + d13C_Phe_mean + d13C_Lys_mean,
+                 data = training_data)
+
+#extract loadings
+loadings <- as.data.frame(lda_model$scaling)
+loadings$Variable <- rownames(loadings)
+
+#take absolute value to rank loadings
+loadings$abs_LD1 <- abs(loadings$LD1)
+loadings$abs_LD2 <- abs(loadings$LD2)
+
+#rank the strongest loadings
+LD1_ranked <- loadings[order(-loadings$abs_LD1), c("Variable", "LD1", "abs_LD1")]
+LD2_ranked <- loadings[order(-loadings$abs_LD2), c("Variable", "LD2", "abs_LD2")]
+
+#print the strongest loadings for each axis
+print(LD1_ranked, row.names = FALSE)
+print(LD2_ranked, row.names = FALSE)
+
+#extract the loadings into a dataframe
+loadings <- as.data.frame(lda_model$scaling)
+loadings$Variable <- rownames(loadings)
+
+#calculate absolute values for ranking
+loadings$abs_LD1 <- abs(loadings$LD1)
+loadings$abs_LD2 <- abs(loadings$LD2)
+
+#rank strongest loadings
+LD1_ranked <- loadings[order(-loadings$abs_LD1), c("Variable", "LD1", "abs_LD1")]
+LD2_ranked <- loadings[order(-loadings$abs_LD2), c("Variable", "LD2", "abs_LD2")]
+
+#print results
+print(LD1_ranked, row.names = FALSE)
+print(LD2_ranked, row.names = FALSE)
+
+#generate accuracy and confusion matrix
+predicted <- lda_cv$class
+true <- training_data$Group
+
+accuracy <- mean(predicted == true)
+conf_mat <- table(True = true, Predicted = predicted)
+
+print(conf_mat)
+
+group_acc <- diag(conf_mat) / rowSums(conf_mat)
+print(round(group_acc, 3))
+
+cat("\nOverall LDA LOOCV accuracy:", round(accuracy * 100, 2), "%\n")
+
+#run permanova
+training_data$Group <- factor(training_data$Group)
+
+#select aa variables
+aa_vars <- c("d13C_Ile_mean", "d13C_Val_mean", "d13C_Leu_mean", "d13C_Phe_mean", "d13C_Thr_mean", "d13C_Lys_mean")
+
+#ensure no NA values
+dat_clean <- training_data %>%
+  select(Group, all_of(aa_vars)) %>%
+  na.omit()
+
+#set up variables for permanova
+X <- dat_clean[, aa_vars]
+group <- dat_clean$Group
+
+#calculate euclidian distance
+dist_euc <- dist(X, method = "euclidean")
+
+#assess dispersion effects
+dispersion <- betadisper(dist_euc, group)
+dispersion_test <- permutest(dispersion, permutations = 999)
+
+#view dispersion test results
+dispersion_table <- data.frame(
+  Test = "Homogeneity of dispersion (PERMDISP)",
+  Df_groups = dispersion_test$tab[1, "Df"],
+  Df_residuals = dispersion_test$tab[2, "Df"],
+  F_value = dispersion_test$tab[1, "F"],
+  p_value = dispersion_test$tab[1, "Pr(>F)"])
+
+#run global permanova
+global_perm <- adonis2(
+  dist_euc ~ group,
+  permutations = 999)
+
+#show global permanova results
+global_table <- data.frame(
+  Test = "Global PERMANOVA",
+  Df_groups = global_perm$Df[1],
+  Df_residuals = global_perm$Df[2],
+  F_value = global_perm$F[1],
+  R2 = global_perm$R2[1],
+  p_value = global_perm$`Pr(>F)`[1])
+
+#run pairwise permanova
+pairwise_perm <- pairwise.adonis(
+  x = X,
+  factors = group,
+  sim.method = "euclidean",
+  perm = 999,
+  p.adjust.m = "none")
+
+#view pairwise permanova results
+pairwise_table <- pairwise_perm %>%
+  select(
+    Comparison = pairs,
+    F_value = F.Model,
+    R2,
+    p_value = p.value
+  )
+
+#project into lda space
+train_scores <- predict(lda_model, newdata = training_data)$x
+training_data$LD1 <- train_scores[, 1]
+training_data$LD2 <- train_scores[, 2]
+
+test_scores <- predict(lda_model, newdata = test_data)$x
+test_data$LD1 <- test_scores[, 1]
+test_data$LD2 <- test_scores[, 2]
+
+#classify test data
+test_predictions <- predict(lda_model, newdata = test_data)
+test_data$Predicted_Group <- test_predictions$class
+test_data$Posterior_Prob <- apply(test_predictions$posterior, 1, max)
+
+#print results
+print(test_data %>%
+        select(Sample_Type, Predicted_Group, Posterior_Prob) %>%
+        arrange(Sample_Type))
+
+#proportion variance explained by each axis
+var_explained <- lda_model$svd^2 / sum(lda_model$svd^2)
+ld1_var <- round(var_explained[1] * 100, 1)
+ld2_var <- round(var_explained[2] * 100, 1)
+
+#compute loading vectors
+loadings <- coef(lda_model)
+loadings_df <- data.frame(Variable = rownames(loadings), loadings)
+loadings_df$LD1 <- loadings_df$LD1 * 2  # visual scale
+loadings_df$LD2 <- loadings_df$LD2 * 2
+
+#set legend order for groups
+test_data$Sample_Type <- factor(
+  test_data$Sample_Type,
+  levels = c(
+    "HawaiiOffshoreDeepPlankton",   # now first
+    "HawaiiOffshoreSurfacePlankton",
+    "HawaiiReefPlankton"            # now last
+  )
+)
+
+#select color palattes
+training_colors <- c(
+  "Diatom" = "lightpink",
+  "Dinoflagellate" = "lightblue",
+  "Prasinophyte" = "gray",
+  "Raphidophyte" = "tan"
+)
+
+test_colors <- c(
+  "HawaiiOffshoreDeepPlankton" = "#7570b3",     # reordered
+  "HawaiiOffshoreSurfacePlankton" = "#d95f02",
+  "HawaiiReefPlankton" = "#1b9e77"
+)
+
+#update the test group labels
+test_labels <- c(
+  "HawaiiOffshoreDeepPlankton" = "Hawaii Offshore Deep Plankton",
+  "HawaiiOffshoreSurfacePlankton" = "Hawaii Offshore Surface Plankton",
+  "HawaiiReefPlankton" = "Hawaii Reef Plankton"
+)
+
+#generate lda plot
+stahl_lda_plot <- ggplot() +
+  
+  # Training points
+  geom_point(
+    data = training_data,
+    aes(x = LD1, y = LD2, color = Group),
+    size = 3.5, alpha = 0.8
+  ) +
+  
+  # Ellipses
+  stat_ellipse(
+    data = training_data,
+    aes(x = LD1, y = LD2, color = Group),
+    level = 0.95, linetype = 1, linewidth = 1
+  ) +
+  
+  # Test points
+  geom_point(
+    data = test_data,
+    aes(x = LD1, y = LD2, shape = Sample_Type, fill = Sample_Type),
+    color = "black", size = 4, stroke = 1.2
+  ) +
+  
+  # Shapes + fills
+  scale_shape_manual(
+    values = c(24, 22, 21),      # triangle, square, circle in new order
+    labels = test_labels
+  ) +
+  scale_fill_manual(
+    values = test_colors,
+    labels = test_labels
+  ) +
+  
+  # Training colors
+  scale_color_manual(values = training_colors) +
+  
+  labs(
+    x = paste0("LD1 (", ld1_var, "%)"),
+    y = paste0("LD2 (", ld2_var, "%)"),
+    color = "Training Group",
+    fill  = "Test Group",
+    shape = "Test Group"
+  ) +
+  
+  theme_minimal(base_size = 18) +
+  theme(
+    text = element_text(color = "black"),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.ticks = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    plot.title = element_blank(),
+    plot.subtitle = element_blank()
+  ) +
+  
+  # ---- Combined Test Group Legend ----
+  guides(
+    shape = guide_legend(
+      order = 1,
+      title = "Test Group",
+      override.aes = list(
+        shape = c(24, 22, 21),          # matches new ordering
+        fill  = test_colors,            # matches new ordering
+        color = "black",
+        size  = 4
+      )
+    ),
+    fill = "none"
+  )
+
+print(stahl_lda_plot)
+
+#classification summary by sample type
+
+posterior_summary <- test_data %>%
+  dplyr::group_by(Sample_Type, Predicted_Group) %>%
+  dplyr::summarise(Mean_Posterior = round(mean(Posterior_Prob), 3),
+            Count = n(),
+            .groups = "drop")
+
+print(posterior_summary)
+
+#classification of each test sample
+
+test_class_results <- lapply(1:nrow(test_data), function(i) {
+  sample_i <- test_data[i, , drop = FALSE]
+  pred <- predict(lda_model, newdata = sample_i)
+
+  tibble(
+    Sample_Type = sample_i$Sample_Type,
+    Predicted_Group = pred$class,
+    Posterior_Prob = round(max(pred$posterior), 3),
+    Most_Likely = names(which.max(pred$posterior)),
+    Diatom = round(pred$posterior[, "Diatom"], 3),
+    Dinoflagellate = round(pred$posterior[, "Dinoflagellate"], 3),
+    Prasinophyte = round(pred$posterior[, "Prasinophyte"], 3),
+    Raphidophyte = round(pred$posterior[, "Raphidophyte"], 3)
+  )
+})
+
+test_class_results <- bind_rows(test_class_results)
+print(test_class_results)
+```
+Table S6. Global and pairwise PERMANOVA results for primary producer LDA
+```{r}
+global_table
+
+pairwise_table
+```
+
+
+
+Figure 4. d15N source amino acids of Hawaiian Zooplankton (Linear Regressions)
+
+```{r}
+#isolate d15N source amino acid data
+d15N <- StonerOsborne2026 %>% 
+  select(Sample.ID, Distance_from_Shore, log_dist, Collection_Habitat, Sample.Season, Location, Phe15N, Lys15N)
+
+#remove the deep samples because they look like reef samples
+d15N_no_deep <- d15N %>% 
+  filter(Collection_Habitat != "Offshore Deep")
+
+#get data into long format
+d15N_no_deep_long <- d15N_no_deep %>% 
+  pivot_longer(
+    cols = c(Phe15N, Lys15N),
+    names_to = "AminoAcid",
+    values_to = "d15N"
+  )
+
+#run linear regression with d15N SAA values and natural log-transformed distance from shore
+d15N_no_deep_model_results <- d15N_no_deep_long %>%
+  group_by(AminoAcid) %>%
+  do({
+    fit <- lm(d15N ~ log_dist, data = .)
+    tidy_fit <- tidy(fit)
+    slope <- tidy_fit$estimate[tidy_fit$term == "log_dist"]
+    intercept <- tidy_fit$estimate[tidy_fit$term == "(Intercept)"]
+    t_stat_slope <- tidy_fit$statistic[tidy_fit$term == "log_dist"]
+    p_val_slope <- tidy_fit$p.value[tidy_fit$term == "log_dist"]
+    glance_fit <- glance(fit)
+    df_residuals <- glance_fit$df.residual
+    df_total <- glance_fit$df.total
+    tibble(
+      AminoAcid = unique(.$AminoAcid),
+      adj_r2 = glance_fit$adj.r.squared,
+      p_adj = p.adjust(p_val_slope, method = "BH"),
+      slope = slope,
+      intercept = intercept,
+      t_stat_slope = t_stat_slope,
+      df_residuals = df_residuals,
+      df_total = df_total,
+      p_val_slope = p_val_slope,
+      equation = paste0("y = ", signif(slope, 3), "x + ", signif(intercept, 3))
+    )
+  }) %>%
+  ungroup()
+
+#specify a season order
+season_order <- c(
+  "Summer 2000",
+  "Winter 2000",
+  "Winter 2005",
+  "Summer 2011",
+  "Summer 2014",
+  "Winter 2014",
+  "Fall 2022",
+  "Winter 2023"
+)
+
+#order the seasons in the actual df
+d15N_no_deep_long$Sample.Season <- factor(d15N_no_deep_long$Sample.Season, levels = season_order)
+
+#map colors to seasons
+season_colors <- c(
+  "Fall 2022"   = "#E69F00",  
+  "Summer 2011" = "#56B4E9",  
+  "Winter 2023" = "#CC79A7",
+  "Summer 2000" = "#999999",
+  "Winter 2000" = "#F0E442",
+  "Winter 2005" = "#0072B2",
+  "Winter 2014" = "#D55E00",
+  "Summer 2014" = "#009E73"
+)
+
+#plot linear regressions faceted by SAAs
+d15N_no_deep_linear_regressions <- ggplot(d15N_no_deep_long, aes(x = Distance_from_Shore, y = d15N)) +
+  geom_point(
+    aes(color = Sample.Season, shape = Location),
+    size = 3,
+    alpha = 0.8,
+    position = position_jitter(width = 0.1, height = 0.1)
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    linetype = "dashed",
+    linewidth = 0.8
+  ) +
+  facet_wrap2(~ AminoAcid, scales = "free_y", ncol = 3, axes = TRUE, remove_labels = "x") +
+  scale_color_manual(values = season_colors, name = "Sample Season") +
+  # natural log-transform x axis
+  scale_x_continuous(trans = "log", guide = "axis_logticks", 
+                     breaks=c(1, 10, 100), 
+                     name = "Distance from Shore (km)") +
+  scale_y_continuous(name = expression(atop(delta^15 * "N Value (‰)"))) +
+  labs(
+    color = "Sample Season",
+    shape = "Location"
+  ) +
+  guides(
+    color = guide_legend(nrow = 2, title = "Sample Season"),
+    shape = guide_legend(nrow = 1, title = "Location")
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    text = element_text(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    strip.text = element_text(face = "bold", size = 20, color = "black"),
+    legend.title = element_text(color = "black", size = 18),
+    legend.text  = element_text(color = "black", size = 16),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.spacing.y = unit(0.5, "pt")
+  )
+
+#show plot
+d15N_no_deep_linear_regressions
+```
+Table S7. Linear regressions results for d15N Source AAs
+```{r}
+d15N_no_deep_model_results
+```
+
+
+
+Figure 5. d15N source amino acids of Hawaiian Zooplankton (Boxplots)
+
+```{r}
+#prepare data in long format, include deep now
+d15N_long <- d15N %>%
+  select(Sample.ID, Collection_Habitat, Phe15N, Lys15N) %>%
+  pivot_longer(
+    cols = c(Phe15N, Lys15N),
+    names_to = "AminoAcid",
+    values_to = "d15N"
+  ) %>%
+  mutate(
+    AminoAcid = case_when(
+      AminoAcid == "Phe15N" ~ "Phe",
+      AminoAcid == "Lys15N" ~ "Lys",
+      TRUE ~ AminoAcid
+    )
+  )
+
+#rename the collection habitats to include a space between the first name and second name
+d15N_long$Collection_Habitat[d15N_long$Collection_Habitat == "Offshore Surface"] <- "Offshore\nSurface"
+d15N_long$Collection_Habitat[d15N_long$Collection_Habitat == "Offshore Deep"] <- "Offshore\nDeep"
+
+unique(d15N_long$Collection_Habitat)
+
+#run statistical analysis for phe
+d15N_phe_data <- d15N_long %>% filter(AminoAcid == "Phe") %>% 
+  na.omit()
+
+#test assumptions for normality
+d15N_phe_shapiro_test <- shapiro.test(d15N_phe_data$d15N)
+d15N_phe_levene_test <- car::leveneTest(d15N ~ Collection_Habitat, data = d15N_phe_data)
+
+print(d15N_phe_levene_test)
+print(d15N_phe_shapiro_test)
+
+#run kruskal-wallis test
+d15N_phe_kruskal <- rstatix::kruskal_test(d15N ~ Collection_Habitat, data = d15N_phe_data)
+
+#calculate effect size
+d15N_phe_effsize <- d15N_phe_data %>%
+  kruskal_effsize(d15N ~ Collection_Habitat) 
+
+#run pairwise dunn's test with bh correction
+d15N_phe_dunn <- d15N_phe_data %>%
+  dunn_test(d15N ~ Collection_Habitat, p.adjust.method = "BH") %>%
+  mutate(
+    p.adj.signif = case_when(
+      p.adj < 0.001 ~ "***",
+      p.adj < 0.01  ~ "**",
+      p.adj < 0.05  ~ "*",
+      TRUE          ~ "ns"
+    )
+  )
+
+#add identifiers for when stats results with lys are combined
+d15N_phe_kruskal <- d15N_phe_kruskal %>% mutate(AminoAcid = "Phe", test = "kruskal")
+d15N_phe_effsize <- d15N_phe_effsize %>% mutate(AminoAcid = "Phe")
+d15N_phe_dunn <- d15N_phe_dunn %>% mutate(AminoAcid = "Phe", test = "pairwise-dunn")
+
+#run statistical analysis for lys
+d15N_lys_data <- d15N_long %>% filter(AminoAcid == "Lys") %>% 
+  na.omit()
+
+#test assumptions for normality
+d15N_lys_shapiro_test <- shapiro.test(d15N_lys_data$d15N)
+d15N_lys_levene_test <- car::leveneTest(d15N ~ Collection_Habitat, data = d15N_lys_data)
+
+print(d15N_lys_levene_test)
+print(d15N_lys_shapiro_test)
+
+#run kruskal-wallis test
+d15N_lys_kruskal <- rstatix::kruskal_test(d15N ~ Collection_Habitat, data = d15N_lys_data)
+
+#calculate effect size
+d15N_lys_effsize <- d15N_lys_data %>%
+  kruskal_effsize(d15N ~ Collection_Habitat) 
+
+#run pairwise dunn's test with bh correction
+d15N_lys_dunn <- d15N_lys_data %>%
+  dunn_test(d15N ~ Collection_Habitat, p.adjust.method = "BH") %>%
+  mutate(
+    p.adj.signif = case_when(
+      p.adj < 0.001 ~ "***",
+      p.adj < 0.01  ~ "**",
+      p.adj < 0.05  ~ "*",
+      TRUE          ~ "ns"
+    )
+  )
+
+#add identifiers for when stats are combined with phe
+d15N_lys_kruskal <- d15N_lys_kruskal %>% mutate(AminoAcid = "Lys", test = "kruskal")
+d15N_lys_effsize <- d15N_lys_effsize %>% mutate(AminoAcid = "Lys")
+d15N_lys_dunn <- d15N_lys_dunn %>% mutate(AminoAcid = "Lys", test = "pairwise-dunn")
+
+#combine stats results
+d15N_kruskal_combined <- bind_rows(d15N_phe_kruskal, d15N_lys_kruskal)
+d15N_effsize_combined <- bind_rows(d15N_phe_effsize, d15N_lys_effsize)
+d15N_pairwise_combined <- bind_rows(d15N_phe_dunn, d15N_lys_dunn)
+
+#print for reporting
+print(d15N_kruskal_combined)
+print(d15N_effsize_combined)
+print(d15N_pairwise_combined)
+
+#add a y-position for significance brackets in the boxplot figure
+y_positions_15N <- d15N_long %>%
+  dplyr::group_by(AminoAcid) %>%
+  dplyr::summarise(y.position = max(d15N, na.rm = TRUE) + 0.5)
+
+#add y-positions to combined results dataframe
+combined_results_15N <- d15N_pairwise_combined %>%
+  left_join(y_positions_15N, by = "AminoAcid")
+
+#filter only for significant results so no significance bars for non-significant results
+combined_results_15N_filtered <- combined_results_15N %>%
+  dplyr::filter(p.adj.signif %in% c("*", "**", "***"))
+
+#get proper y positions
+combined_results_15N_filtered <- combined_results_15N_filtered %>% 
+  mutate(y.position = c(4, 5.5, 4.75, 5.75, 6.5))
+
+
+ #color blind friendly colors for plot
+colors <- c("Reef" = "#1b9e77",
+            "Offshore\nSurface" = "#d95f02",
+            "Offshore\nDeep" = "#7570b3")
+
+# Base plot with corrected outlier aesthetics
+boxplot_15N <- ggplot(
+  d15N_long,
+  aes(x = Collection_Habitat, y = d15N)
+) +
+  geom_boxplot(
+    aes(fill = Collection_Habitat),
+    outlier.shape = 21,          
+    outlier.size = 2.5,
+    outlier.colour = "black",    
+    outlier.fill = NULL          
+  ) +
+  scale_fill_manual(values = colors) +
+  ggh4x::facet_wrap2(
+    ~ AminoAcid,
+    scales = "free_y",
+    axes = TRUE,
+    remove_labels = "x"
+  )
+
+# Add stats, scales, labels, and theme
+boxplot_15N_pub <- boxplot_15N +
+  ggpubr::stat_pvalue_manual(
+    combined_results_15N_filtered,
+    label = "p.adj.signif",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    tip.length = 0.01,
+    bracket.size = 0.8,
+    text.size = 20,
+    size = 6,
+    fontface = "bold"
+  ) +
+  scale_x_discrete(
+    limits = c("Reef", "Offshore\nSurface", "Offshore\nDeep")
+  ) +
+  labs(
+    x = "\nZooplankton Collection Habitat",
+    y = expression(atop(delta^15 * "N Value (‰)"))
+  ) +
+  theme_minimal(base_size = 19) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold", color = "black"),
+    axis.text.x = element_text(size = 17, color = "black"),
+    axis.text.y = element_text(size = 19, color = "black"),
+    axis.title.x = element_text(size = 19, color = "black"),
+    axis.title.y = element_text(size = 19, color = "black"),
+    plot.title = element_text(size = 23, color = "black", face = "bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.background = element_blank(),
+    panel.background = element_blank()
+  )
+
+print(boxplot_15N_pub)
+
+```
+Table S8. Pairwise comparisons of d15N SAA values 
+```{r}
+d15N_kruskal_combined
+
+d15N_pairwise_combined
+```
+
+
+Figure 6. d13C EAA and d15N SAA LDA for Hawaiian zooplankton
+
+```{r}
+#prepare dataset with only mean-centered d13C EAA values and d15N SAA values
+d15N_d13C_lda_data <- StonerOsborne2026 %>%
+  select(Sample.ID, Collection_Habitat, Thr13C_mean, Val13C_mean, Leu13C_mean, 
+         Ile13C_mean, Phe13C_mean, Lys13C_mean, Phe15N, Lys15N) %>%
+  na.omit()
+
+#factor group order
+d15N_d13C_lda_data$Group <- factor(d15N_d13C_lda_data$Collection_Habitat,
+                         levels = c("Reef", "Offshore Surface", "Offshore Deep"))
+
+# predictor matrix x and response y
+X <- d15N_d13C_lda_data %>%
+  select(Thr13C_mean, Val13C_mean, Leu13C_mean,
+         Ile13C_mean, Phe13C_mean, Lys13C_mean, Phe15N, Lys15N)
+y <- d15N_d13C_lda_data$Group
+
+lda_d13C_d15N_df <- cbind(X, Group = y)
+
+#perform lda
+lda_model_13C_15N <- lda(Group ~ ., data = lda_d13C_d15N_df)
+
+#generate lda scores for plotting
+lda_pred <- predict(lda_model_13C_15N)
+lda_scores <- as.data.frame(lda_pred$x)
+lda_scores$Group <- lda_d13C_d15N_df$Group
+
+#percentage of variation explained
+prop_var <- lda_model_13C_15N$svd^2 / sum(lda_model_13C_15N$svd^2)
+x_lab <- paste0("LD1 (", round(prop_var[1] * 100, 1), "%)")
+y_lab <- paste0("LD2 (", round(prop_var[2] * 100, 1), "%)")
+
+#select color palette
+custom_colors <- c(
+  "Reef" = brewer.pal(3, "Dark2")[1],            # Green
+  "Offshore Surface" = brewer.pal(3, "Dark2")[2],# Orange
+  "Offshore Deep" = brewer.pal(3, "Dark2")[3]    # Purple
+)
+
+#create lda plot
+lda_d13C_d15N_plot <- ggplot(lda_scores, aes(x = LD1, y = LD2, fill = Group)) +
+    stat_ellipse(
+    aes(color = Group),
+    type = "norm",
+    level = 0.95,
+    size = 1,
+    alpha = 0.6) +
+    geom_point(
+    size = 4,
+    shape = 21,
+    stroke = 1.2,
+    color = "black") +
+    scale_fill_manual(values = custom_colors) +
+  scale_color_manual(values = custom_colors) +
+    labs(
+    x = x_lab,
+    y = y_lab,
+    fill = "Zooplankton\nCollection Location",
+    color = "Zooplankton\nCollection Location") +
+    theme_minimal(base_size = 18) +
+  theme(
+    text = element_text(color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(color = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.title = element_blank(),
+    panel.border = element_blank())
+
+print(lda_d13C_d15N_plot)
+
+#run permanova
+permanova <- adonis2(X ~ y, method = "euclidean")
+print(permanova)
+
+#run pairwise permanova
+pairwise_adonis <- function(data, grouping, method = "euclidean", permutations = 999) {
+  group_combinations <- combn(unique(grouping), 2, simplify = FALSE)
+  results <- list()
+  
+  for (pair in group_combinations) {
+    group1 <- pair[1]
+    group2 <- pair[2]
+    
+    subset_data <- data[grouping %in% c(group1, group2), ]
+    subset_group <- grouping[grouping %in% c(group1, group2)]
+    
+    adonis_result <- adonis2(subset_data ~ subset_group, method = method, permutations = permutations)
+    
+    result <- data.frame(
+      Group1 = group1,
+      Group2 = group2,
+      F_statistic = adonis_result$`F`[1],
+      R2 = adonis_result$R2[1],
+      p_value = adonis_result$`Pr(>F)`[1]
+    )
+    
+    results[[length(results) + 1]] <- result
+  }
+  
+  do.call(rbind, results)
+}
+
+pairwise_results <- pairwise_adonis(lda_scores[, c("LD1", "LD2")], lda_scores$Group)
+print(pairwise_results)
+
+#run distance matrix
+dist_matrix <- dist(X, method = "euclidean")
+
+#assess dispersion
+dispersion <- betadisper(dist_matrix, y)
+
+#test dispersion
+dispersion_test <- anova(dispersion)
+print(dispersion_test)
+
+#find top loadings for each ld axis
+loading_strength <- as.data.frame(lda_model$scaling)
+loading_strength$Variable <- rownames(loading_strength)
+
+loading_strength <- loading_strength %>%
+  mutate(
+    abs_LD1 = abs(LD1),
+    abs_LD2 = abs(LD2)
+  ) %>%
+  arrange(desc(abs_LD1)) %>% 
+  arrange(desc(abs_LD2))
+
+#print top loadings for each ld axis
+print(loading_strength[, c("Variable", "LD1", "abs_LD1")])
+print(loading_strength[, c("Variable", "LD2", "abs_LD2")])
+
+#perform leave one out cross validation
+lda_cv <- lda(Group ~ ., data = lda_d13C_d15N_df, CV = TRUE)
+conf_matrix <- table(Predicted = lda_cv$class, Actual = y)
+print(conf_matrix)
+
+#accuracy of predictions
+accuracy <- mean(lda_cv$class == y)
+cat(sprintf("\nLOOCV Accuracy: %.2f%%\n", accuracy * 100))
+
+print(lda_d13C_d15N_plot)
+```
+Table S9. PERMANOVA for LDA with d13C EAA and d15N SAA values of Hawaiian Zooplankton
+```{r}
+permanova
+
+pairwise_results
+```
+
+
+
+Figure 7. Trophic position of Hawaiian Zooplankton (Linear Regressions)
+
+```{r}
+#isolate trophic position data
+TPs <- StonerOsborne2026 %>% 
+  select(Sample.ID, Distance_from_Shore, log_dist, Collection_Habitat, Sample.Season, Location, TP.Glx.Phe, TP.Ala.Phe) %>% 
+  na.omit()
+
+#get data into long format
+TP_long <- TPs %>% 
+  pivot_longer(
+    cols = c(TP.Glx.Phe, TP.Ala.Phe),
+    names_to = "TPestimate",
+    values_to = "TP"
+  )
+
+
+#rename the tp estimates to TP (Glx - Phe) and TP (Ala - Phe)
+TP_long$TPestimate[TP_long$TPestimate == "TP.Glx.Phe"] <- "TP (Glx - Phe)"
+TP_long$TPestimate[TP_long$TPestimate == "TP.Ala.Phe"] <- "TP (Ala - Phe)"
+
+#run linear regression with tp values and natural log-transformed distance from shore
+TP_results <- TP_long %>%
+  group_by(TPestimate) %>%
+  do({
+    fit <- lm(TP ~ log_dist, data = .)
+    tidy_fit <- tidy(fit)
+    slope <- tidy_fit$estimate[tidy_fit$term == "log_dist"]
+    intercept <- tidy_fit$estimate[tidy_fit$term == "(Intercept)"]
+    t_stat_slope <- tidy_fit$statistic[tidy_fit$term == "log_dist"]
+    p_val_slope <- tidy_fit$p.value[tidy_fit$term == "log_dist"]
+    glance_fit <- glance(fit)
+    df_residuals <- glance_fit$df.residual
+    df_total <- glance_fit$df.total
+    tibble(
+      TPestimate = unique(.$TPestimate),
+      adj_r2 = glance_fit$adj.r.squared,
+      p_adj = p.adjust(p_val_slope, method = "BH"),
+      slope = slope,
+      intercept = intercept,
+      t_stat_slope = t_stat_slope,
+      df_residuals = df_residuals,
+      df_total = df_total,
+      p_val_slope = p_val_slope,
+      equation = paste0("y = ", signif(slope, 3), "x + ", signif(intercept, 3))
+    )
+  }) %>%
+  ungroup()
+
+#specify a season order
+season_order <- c(
+  "Summer 2000",
+  "Winter 2000",
+  "Winter 2005",
+  "Summer 2011",
+  "Summer 2014",
+  "Winter 2014",
+  "Fall 2022",
+  "Winter 2023"
+)
+
+#order the seasons in the actual df
+TP_long$Sample.Season <- factor(TP_long$Sample.Season, levels = season_order)
+
+#map colors to seasons
+season_colors <- c(
+  "Fall 2022"   = "#E69F00",  
+  "Summer 2011" = "#56B4E9",  
+  "Winter 2023" = "#CC79A7",
+  "Summer 2000" = "#999999",
+  "Winter 2000" = "#F0E442",
+  "Winter 2005" = "#0072B2",
+  "Winter 2014" = "#D55E00",
+  "Summer 2014" = "#009E73"
+)
+
+#plot linear regressions faceted by tp metrics
+TP_linear_regressions <- ggplot(TP_long, aes(x = Distance_from_Shore, y = TP)) +
+  geom_point(
+    aes(color = Sample.Season, shape = Location),
+    size = 3,
+    alpha = 0.8,
+    position = position_jitter(width = 0.1, height = 0.1)
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    linetype = "dashed",
+    linewidth = 0.8
+  ) +
+  facet_wrap2(~ TPestimate, ncol = 3, axes = TRUE, remove_labels = "x") +
+  scale_color_manual(values = season_colors, name = "Sample Season") +
+  # natural log-transform x axis
+  scale_x_continuous(trans = "log", guide = "axis_logticks", 
+                     breaks=c(1, 10, 100), 
+                     name = "Distance from Shore (km)") +
+  scale_y_continuous(name = "Trophic Position") +
+  labs(
+    color = "Sample Season",
+    shape = "Location"
+  ) +
+  guides(
+    color = guide_legend(nrow = 2, title = "Sample Season"),
+    shape = guide_legend(nrow = 1, title = "Location")
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    text = element_text(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    strip.text = element_text(face = "bold", size = 20, color = "black"),
+    legend.title = element_text(color = "black", size = 18),
+    legend.text  = element_text(color = "black", size = 16),
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.spacing.y = unit(0.5, "pt")
+  )
+
+#show plot
+TP_linear_regressions
+```
+Table S10. Linear regression results for TP estimates of Hawaiian zooplankton
+
+```{r}
+TP_results
+```
+
+
+
+Figure 8. Trophic position of Hawaiian Zooplankton (Boxplots)
+
+```{r}
+#rename the collection habitats to include a space between the first name and second name
+TP_long$Collection_Habitat[TP_long$Collection_Habitat == "Offshore Surface"] <- "Offshore\nSurface"
+TP_long$Collection_Habitat[TP_long$Collection_Habitat == "Offshore Deep"] <- "Offshore\nDeep"
+
+unique(TP_long$Collection_Habitat)
+
+#run stats for TP (Ala - Phe)
+tp_ala_phe_data <- TP_long %>% filter(TPestimate == "TP (Ala - Phe)")
+
+#test assumptions for normality
+tp_ala_phe_shapiro_test <- shapiro.test(tp_ala_phe_data$TP)
+tp_ala_phe_levene_test <- car::leveneTest(TP ~ Collection_Habitat, data = tp_ala_phe_data)
+
+print(tp_ala_phe_shapiro_test)
+print(tp_ala_phe_levene_test)
+
+#run anova
+tp_ala_phe_anova_model <- aov(TP ~ Collection_Habitat, data = tp_ala_phe_data)
+
+#make table of anova results
+tp_ala_phe_anova_tidy <- broom::tidy(tp_ala_phe_anova_model)
+print(tp_ala_phe_anova_tidy)
+
+#extract numerator df, F value, and p-value
+collection_habitat_row <- tp_ala_phe_anova_tidy %>% filter(term == "Collection_Habitat")
+
+#extract denominator df
+residuals_row <- tp_ala_phe_anova_tidy %>% filter(term == "Residuals")
+
+#create summary table with all key stats
+tp_ala_phe_anova_summary <- tibble(
+  DF_num = collection_habitat_row$df,
+  DF_den = residuals_row$df,
+  F_value = collection_habitat_row$statistic,
+  p_value = collection_habitat_row$p.value
+)
+
+#calculate effect size: eta squared
+tp_ala_phe_eta2 <- effectsize::eta_squared(tp_ala_phe_anova_model, partial = FALSE) %>%
+  filter(Parameter == "Collection_Habitat") %>%
+  select(Eta2)
+
+#add effect size to anova summary
+tp_ala_phe_anova_summary <- bind_cols(tp_ala_phe_anova_summary, tp_ala_phe_eta2)
+
+#add pairwise comparison
+tp_ala_phe_tukey_results <- TukeyHSD(tp_ala_phe_anova_model)
+
+#make table for pairwise results with significance stars
+tp_ala_phe_pairwise_results <- broom::tidy(tp_ala_phe_tukey_results) %>%
+  mutate(
+    p.adj.signif = case_when(
+      adj.p.value < 0.001 ~ "***",
+      adj.p.value < 0.01  ~ "**",
+      adj.p.value < 0.05  ~ "*",
+      TRUE                ~ "ns"
+    )
+  ) %>%
+  dplyr::rename(
+    comparison = contrast,
+    estimate = estimate,
+    conf.low = conf.low,
+    conf.high = conf.high,
+    p.adj = adj.p.value
+  )
+
+#add label of stats test and tp metric
+tp_ala_phe_anova_summary <- tp_ala_phe_anova_summary %>% 
+  mutate(TPestimate = "TP (Ala - Phe)",
+         test = "anova")
+
+tp_ala_phe_pairwise_results <- tp_ala_phe_pairwise_results %>% 
+  mutate(TPestimate = "TP (Ala - Phe)", 
+         test = "pairwise-anova-tukey")
+
+
+#run stats test for TP (Glx - Phe)
+tp_glx_phe_data <- TP_long %>% filter(TPestimate == "TP (Glx - Phe)")
+
+#test assumptions for normality
+tp_glx_phe_shapiro_test <- shapiro.test(tp_glx_phe_data$TP)
+tp_glx_phe_levene_test <- car::leveneTest(TP ~ Collection_Habitat, data = tp_glx_phe_data)
+
+print(tp_glx_phe_levene_test)
+print(tp_glx_phe_shapiro_test)
+
+#run kruskal-wallis test
+tp_glx_phe_kw <- kruskal.test(TP ~ Collection_Habitat, data = tp_glx_phe_data)
+
+#calculate effect size (epsilon squared) for kruskal-wallis
+#formula: ε² = (H - k + 1) / (n - k)
+H <- tp_glx_phe_kw$statistic
+k <- length(unique(tp_glx_phe_data$Collection_Habitat))
+n <- nrow(tp_glx_phe_data)
+epsilon_sq <- (H - k + 1) / (n - k)
+epsilon_sq <- max(epsilon_sq, 0)
+
+#run dunn’s post hoc test with bh correction
+tp_glx_phe_dunn <- FSA::dunnTest(TP ~ Collection_Habitat, data = tp_glx_phe_data, method = "bh")
+
+#get posthoc pairwise results into a table
+tp_glx_phe_dunn_results <- tp_glx_phe_dunn$res %>%
+  as_tibble() %>%
+  transmute(
+    Comparison = Comparison,
+    Z = Z,
+    P_unadjusted = P.unadj,
+    P_adjusted = P.adj,
+    Significance = case_when(
+      P.adj < 0.001 ~ "***",
+      P.adj < 0.01  ~ "**",
+      P.adj < 0.05  ~ "*",
+      TRUE          ~ "ns"
+    )
+  )
+
+#add label
+tp_glx_phe_dunn_results <- tp_glx_phe_dunn_results %>% 
+  mutate(TPestimate = "TP (Glx - Phe)",
+         test = "Dunn's")
+
+#make kruskal-wallis summary tibble
+tp_glx_phe_kw_summary <- tibble(
+  Test = "Kruskal-Wallis",
+  Chi_squared = unname(H),
+  df = k - 1,
+  P_value = tp_glx_phe_kw$p.value,
+  Effect_size_epsilon_squared = epsilon_sq
+)
+
+#add label
+tp_glx_phe_kw_summary <- tp_glx_phe_kw_summary %>% 
+  mutate(TPestimate = "TP (Glx - Phe)",
+         test = "KW")
+
+#list results for both tests
+list(
+  Kruskal_Wallis = tp_glx_phe_kw_summary,
+  Dunn_PostHoc = tp_glx_phe_dunn_results)
+
+#identify unique values in the 'comparison' column for TP (Ala - Phe)
+unique_comparisons <- unique(tp_ala_phe_pairwise_results$comparison)
+print(unique_comparisons)
+
+#identify unique values in the 'comparison' column for TP (Glx - Phe)
+unique_comparisons <- unique(tp_glx_phe_dunn_results$Comparison)
+print(unique_comparisons)
+
+#select needed columns from dunn test results
+tp_glx_phe_dunn_clean <- tp_glx_phe_dunn_results %>%
+  select(Comparison, P_adjusted, Significance, TPestimate)
+
+#select needed columns from anova tukey's results and rename to match dunn's
+tp_ala_phe_pairwise_clean <- tp_ala_phe_pairwise_results %>%
+  dplyr::rename(
+    Comparison = comparison,
+    P_adjusted = p.adj,
+    Significance = p.adj.signif
+  ) %>%
+  dplyr::select(Comparison, P_adjusted, Significance, TPestimate)
+
+#rename values in the 'Comparison' column of the tp_glx_phe_dunn_clean dataframe to match tukey
+tp_glx_phe_dunn_clean$Comparison <- gsub("Offshore\nDeep - Offshore\nSurface", "Offshore\nDeep-Offshore\nSurface", tp_glx_phe_dunn_clean$Comparison)
+tp_glx_phe_dunn_clean$Comparison <- gsub("Offshore\nDeep - Reef", "Offshore\nDeep-Reef", tp_glx_phe_dunn_clean$Comparison)
+tp_glx_phe_dunn_clean$Comparison <- gsub("Offshore\nSurface - Reef", "Offshore\nSurface-Reef", tp_glx_phe_dunn_clean$Comparison)
+
+#combine all stats results into one dataframe
+combined_results <- bind_rows(
+  tp_glx_phe_dunn_clean,
+  tp_ala_phe_pairwise_clean
+)
+
+#assemble plot components
+colors <- c("Reef" = "#1b9e77",
+            "Offshore\nSurface" = "#d95f02",
+            "Offshore\nDeep" = "#7570b3")
+
+#split comparison column into group1 and group2
+combined_results <- combined_results %>%
+  separate(Comparison, into = c("group1", "group2"), sep = "-", remove = FALSE)
+
+unique(combined_results$group1)
+unique(combined_results$group2)
+
+#estimate y-position for significance brackets
+y_positions <- TP_long %>%
+  dplyr::group_by(TPestimate) %>%
+  dplyr::summarise(y.position = max(TP, na.rm = TRUE) + 0.5)
+
+#add y-positions to results dataframe
+combined_results <- combined_results %>%
+  left_join(y_positions, by = "TPestimate")
+
+#adjust y-position values so significance brackets don't overlap
+desired_y_positions <- c(5.75, 6.75, 6.25, 5.75, 6.75, 6.25)
+
+#add desired y-positions to take place of current y-positions
+if (nrow(combined_results) >= length(desired_y_positions)) {
+  combined_results$y.position <- desired_y_positions[1:nrow(combined_results)]
+} else {
+  warning("The number of rows in combined_results is less than the number of specified y.position values.")
+}
+
+#remove non-significant comparisons
+combined_results_filtered <- combined_results %>%
+  filter(Significance %in% c("*", "**", "***"))
+
+# Base plot with corrected outlier aesthetics
+boxplot_15N <- ggplot(
+  TP_long,
+  aes(x = Collection_Habitat, y = TP)
+) +
+  geom_boxplot(
+    aes(fill = Collection_Habitat),
+    outlier.shape = 21,          
+    outlier.size = 2.5,
+    outlier.colour = "black",    
+    outlier.fill = NULL          
+  ) +
+  scale_fill_manual(values = colors) +
+  ggh4x::facet_wrap2(
+    ~ TPestimate,
+    axes = TRUE,
+    remove_labels = "x"
+  )
+
+# Add stats, scales, labels, and theme
+boxplot_15N_pub <- boxplot_15N +
+  ggpubr::stat_pvalue_manual(
+    combined_results_filtered,
+    label = "Significance",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    tip.length = 0.01,
+    bracket.size = 0.8,
+    text.size = 20,
+    size = 6,
+    fontface = "bold"
+  ) +
+  scale_x_discrete(
+    limits = c("Reef", "Offshore\nSurface", "Offshore\nDeep")
+  ) +
+  labs(
+    x = "\nZooplankton Collection Habitat",
+    y = "Trophic Position") +
+  theme_minimal(base_size = 19) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold", color = "black"),
+    axis.text.x = element_text(size = 17, color = "black"),
+    axis.text.y = element_text(size = 19, color = "black"),
+    axis.title.x = element_text(size = 19, color = "black"),
+    axis.title.y = element_text(size = 19, color = "black"),
+    plot.title = element_text(size = 23, color = "black", face = "bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.background = element_blank(),
+    panel.background = element_blank()
+  )
+
+print(boxplot_15N_pub)
+
+ggsave(
+  filename = "Hawaii_TP_Boxplot.png",
+  plot = boxplot_15N_pub,
+  path = "/Users/blakestoner-osborne/Desktop/Desktop - Blake’s MacBook Pro/Chapter 1 Plots",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+```
+Table S11. Pairwise comparisons of Hawaiian zooplankton TP estimates
+```{r}
+tp_ala_phe_anova_summary
+
+tp_ala_phe_pairwise_results
+
+tp_glx_phe_kw
+
+tp_glx_phe_dunn_results
+```
+
+
+
+Figure S3. LDA of Hawaiian zooplankton with d13C EAA, d15N SAA, and TP
+```{r}
+#prepare data
+all_lda_data <- StonerOsborne2026 %>%
+  select(Sample.ID, Collection_Habitat,
+         TP.Glx.Phe, TP.Ala.Phe, Phe15N, Lys15N,
+         Val13C_mean, Thr13C_mean, Leu13C_mean,
+         Lys13C_mean, Ile13C_mean, Phe13C_mean) %>%
+  drop_na()
+
+#make a group column as a factor based on collection_habitat
+all_lda_data$Group <- factor(all_lda_data$Collection_Habitat,
+                         levels = c("Reef", "Offshore Surface", "Offshore Deep"))
+
+
+#make predictor and response variables
+X <- all_lda_data %>%
+  select(Thr13C_mean, Val13C_mean, Leu13C_mean,
+         Ile13C_mean, Phe13C_mean, Lys13C_mean, Phe15N, Lys15N, TP.Glx.Phe, TP.Ala.Phe)
+
+y <- all_lda_data$Group
+
+#run lda
+lda_model <- lda(y ~ ., data = X)
+
+#predict to get lda scores for plotting
+lda_pred <- predict(lda_model)
+
+#combine lda results with metadata
+lda_scores <- as.data.frame(lda_pred$x)
+lda_scores$Group <- y
+
+#determine proportion of variance explained by each axis
+prop_var <- lda_model$svd^2 / sum(lda_model$svd^2)
+x_lab <- paste0("LD1 (", round(prop_var[1] * 100, 1), "%)")
+y_lab <- paste0("LD2 (", round(prop_var[2] * 100, 1), "%)")
+
+#set color scheme
+custom_colors <- c(
+  "Reef" = brewer.pal(3, "Dark2")[1],           # Green
+  "Offshore Surface" = brewer.pal(3, "Dark2")[2], # Orange
+  "Offshore Deep" = brewer.pal(3, "Dark2")[3]     # Purple
+)
+
+#create new lda plot
+
+lda_plot <- ggplot(lda_scores, aes(x = LD1, y = LD2, fill = Group)) +
+  stat_ellipse(
+    aes(color = Group),
+    type = "norm",
+    level = 0.95,
+    size = 1,
+    alpha = 0.6) +
+  geom_point(
+    size = 4,
+    shape = 21,
+    stroke = 1.2,
+    color = "black",
+    alpha = 0.9) +
+  scale_fill_manual(values = custom_colors) +
+  scale_color_manual(values = custom_colors) +
+  labs(
+    x = x_lab,
+    y = y_lab,
+    fill = "Zooplankton\nCollection Location",
+    color = "Zooplankton\nCollection Location") +
+  theme_minimal(base_size = 18) +
+  theme(
+    text = element_text(color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(color = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.title = element_blank(),
+    panel.border = element_blank())
+
+#print plot
+print(lda_plot)
+
+#run permanova
+permanova <- adonis2(X ~ y, method = "euclidean")
+print(permanova)
+
+#set up pairwise permanova
+lda_scores <- as.data.frame(lda_pred$x)
+lda_scores$Group <- all_lda_data$Group
+
+pairwise_adonis <- function(data, grouping, method = "euclidean", permutations = 999) {
+  group_combinations <- combn(unique(grouping), 2, simplify = FALSE)
+  results <- list()
+  
+  for (pair in group_combinations) {
+    group1 <- pair[1]
+    group2 <- pair[2]
+    
+    subset_data <- data[grouping %in% c(group1, group2), ]
+    subset_group <- grouping[grouping %in% c(group1, group2)]
+    
+    adonis_result <- adonis2(subset_data ~ subset_group, method = method, permutations = permutations)
+    
+    result <- data.frame(
+      Group1 = group1,
+      Group2 = group2,
+      F_statistic = adonis_result$`F`[1],
+      R2 = adonis_result$R2[1],
+      p_value = adonis_result$`Pr(>F)`[1]
+    )
+    
+    results[[length(results) + 1]] <- result
+  }
+  
+  do.call(rbind, results)
+}
+
+#run pairwise permanova
+pairwise_results <- pairwise_adonis(lda_scores[, c("LD1", "LD2")], lda_scores$Group)
+
+#print pairiwse permanova results
+print(pairwise_results)
+
+#test for dispersion
+dispersion <- betadisper(dist(X), y)
+print(anova(dispersion))
+
+#identify top loadings for ld1 and ld2
+loading_strength <- as.data.frame(lda_model$scaling)
+loading_strength$Variable <- rownames(loading_strength)
+
+loading_strength <- loading_strength %>%
+  mutate(abs_LD1 = abs(LD1)) %>%
+  arrange(desc(abs_LD1))
+
+print(loading_strength[, c("Variable", "LD1", "abs_LD1")])
+
+loading_strength <- loading_strength %>%
+  mutate(abs_LD2 = abs(LD2)) %>%
+  arrange(desc(abs_LD2))
+
+print(loading_strength[, c("Variable", "LD2", "abs_LD2")])
+
+#run leave one out cross validation
+lda_cv <- lda(y ~ ., data = X, CV = TRUE)
+
+#print confusion matrix and accuracy
+conf_matrix <- table(Predicted = lda_cv$class, Actual = y)
+print(conf_matrix)
+
+accuracy <- mean(lda_cv$class == y)
+cat(sprintf("\nLOOCV Accuracy: %.2f%%\n", accuracy * 100))
+
+print(lda_plot)
+```
+Table S12. PERMANOVA and pairwise PERMANOVA for TP, d15N SAA, and d13C EAA LDA
+```{r}
+permanova
+
+pairwise_results
+```
+
