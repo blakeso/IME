@@ -1,0 +1,99 @@
+﻿SampleName,Group,Group2,Thr13C,Val13C,Leu13C,Phe13C,Lys13C
+Algae 1,Algae,,-15.77,-21.48,-19.91,-16.62,-18.42
+Algae 2,Algae,,-14.05,-19.36,-15.69,-14.03,-15.69
+Algae 3,Algae,,-13.55,-18.24,-15.66,-14.64,-15.77
+Algae 4,Algae,,-17.49,-22.38,-18.88,-17.86,-21.72
+Algae 5,Algae,,-16.55,-22.49,-18.46,-16.68,-18.65
+Algae 6,Algae,,-17.17,-21.3,-20.9,-17.31,-19.35
+Algae 7,Algae,,-15.33,-20.63,-17.58,-15.98,-17.48
+Algae 8,Algae,,-17.69,-20.07,-17.98,-15.95,-17.47
+Algae 9,Algae,,-14.24,-18.54,-16.22,-16.16,-16.67
+Algae 10,Algae,,-16,-21.04,-18.45,-16.06,-17.59
+Algae 11,Algae,,-15.3,-19.85,-17.04,-16.6,-17.74
+Algae 12,Algae,,-17.75,-18.87,-17.57,-18.73,-15.61
+Algae 13,Algae,,-15.54,-24.79,-20,-15.69,-18.53
+DiurnalReefPlankton 1,DiurnalReefPlankton,1,-14.08,-25.58,-24.16,-21.18,-18.71
+DiurnalReefPlankton 2,DiurnalReefPlankton,1,-13.74,-25.82,-25.76,-21.75,-18.96
+DiurnalReefPlankton 3,DiurnalReefPlankton,1,-15.02,-25.99,-24.91,-22.41,-19.58
+DiurnalReefPlankton 4,DiurnalReefPlankton,1,-12.5,-22.06,-22.63,-20.52,-17.22
+DiurnalReefPlankton 5,DiurnalReefPlankton,1,-16.4,-27.74,-25.82,-22.86,-19.27
+DiurnalReefPlankton 6,DiurnalReefPlankton,1,-14.48,-27.04,-24.56,-21.76,-19.72
+DiurnalReefPlankton 7,DiurnalReefPlankton,1,-12.91,-24.49,-23.81,-21.1,-18.17
+DiurnalReefPlankton 8,DiurnalReefPlankton,1,-14.88,-25.2,-24.67,-22.24,-19.34
+DiurnalReefPlankton 9,DiurnalReefPlankton,1,-13.41,-23.88,-22.93,-22.77,-19.8
+DiurnalReefPlankton 10,DiurnalReefPlankton,1,-10.6,-20.91,-21.47,-20.34,-16.39
+DiurnalReefPlankton 11,DiurnalReefPlankton,1,-14.88,-25.08,-23.91,-21.64,-18.66
+DiurnalReefPlankton 12,DiurnalReefPlankton,1,-13.6,-22.28,-22.34,-21.04,-17.67
+DiurnalReefPlankton 13,DiurnalReefPlankton,1,-10.47,-21.57,-22.17,-19.34,-16.93
+Coral 1,Coral,,-8.76,-22,-20.46,-15.46,-13.17
+Coral 2,Coral,,-9.4,-22.91,-22.5,-15.42,-13.98
+Coral 3,Coral,,-12.55,-23.22,-22.39,-17.49,-13.51
+Coral 4,Coral,,-7.04,-20.8,-18.22,-14.26,-11.54
+Coral 5,Coral,,-7.22,-18.38,-19.23,-14.34,-11.37
+Coral 6,Coral,,-7.18,-20.44,-18.45,-14.19,-12.43
+Coral 7,Coral,,-7.31,-19.07,-17.57,-13.6,-11.62
+Coral 8,Coral,,-7.15,-20.8,-18.9,-15.26,-13.02
+Coral 9,Coral,,-8.8,-22.49,-19.99,-15.2,-14.88
+Detritus 1,Detritus,,-16.18,-23.28,-21.87,-17.16,-19.01
+Detritus 2,Detritus,,-12.84,-18.94,-20.24,-14.71,-15.79
+Detritus 3,Detritus,,-11.39,-17.38,-18.1,-13.48,-15.84
+Detritus 4,Detritus,,-12.99,-15.38,-16.4,-12.64,-14.96
+Detritus 5,Detritus,,-14.22,-18.6,-18.15,-14.98,-16.09
+Detritus 6,Detritus,,-15.75,-21.91,-22.1,-17.78,-18.9
+Detritus 7,Detritus,,-14.17,-16.7,-17.62,-18.13,-16.86
+Detritus 8,Detritus,,-12.63,-16.81,-17.28,-17.28,-15.52
+Detritus 9,Detritus,,-15.33,-20.35,-19.7,-16.31,-17.43
+Detritus 10,Detritus,,-16.39,-20.81,-20.6,-18.94,-17.21
+Detritus 11,Detritus,,-11.95,-17.27,-15.59,-14.36,-15.87
+Detritus 12,Detritus,,-16.33,-23.13,-21.91,-17.67,-18.91
+PelagicPlankton 1,PelagicPlankton,1,-8.59,-22.93,-24.11,-26.18,-15.25
+PelagicPlankton 2,PelagicPlankton,1,-7.72,-21.28,-22.49,-23.92,-15.31
+PelagicPlankton 3,PelagicPlankton,1,-8.76,-22.97,-23.37,-25.37,-17.09
+PelagicPlankton 4,PelagicPlankton,1,-6.76,-21.63,-21.67,-23.01,-15.11
+NocturnalReefPlankton 1,NocturnalReefPlankton,1,-13.38,-22.1,-22.57,-23.63,-17.47
+NocturnalReefPlankton 2,NocturnalReefPlankton,1,-12.2,-23,-24.61,-19.68,-17.68
+NocturnalReefPlankton 3,NocturnalReefPlankton,1,-11.64,-22.07,-22.61,-20.21,-17.74
+NocturnalReefPlankton 4,NocturnalReefPlankton,1,-13.76,-28.19,-27.34,-21.51,-18.74
+NocturnalReefPlankton 5,NocturnalReefPlankton,1,-12.6,-23.85,-22.96,-20.61,-17.73
+NocturnalReefPlankton 6,NocturnalReefPlankton,1,-14.02,-23.92,-22.92,-21.09,-17.89
+NocturnalReefPlankton 7,NocturnalReefPlankton,1,-12.41,-23.29,-22.91,-20.81,-17.76
+NocturnalReefPlankton 8,NocturnalReefPlankton,1,-12.26,-23.15,-23.02,-20.62,-17.87
+NocturnalReefPlankton 9,NocturnalReefPlankton,1,-13.4,-25.82,-23.34,-21.05,-17.74
+NocturnalReefPlankton 10,NocturnalReefPlankton,1,-14.45,-23.37,-23.24,-22.79,-19.63
+NocturnalReefPlankton 11,NocturnalReefPlankton,1,-12.99,-23.53,-21.66,-21.03,-17.23
+NocturnalReefPlankton 12,NocturnalReefPlankton,1,-12.6,-22.06,-22.66,-19.84,-17.47
+PelagicPlankton 5,PelagicPlankton,1,-8.64,-22,-23.88,-24.56,-15.76
+PelagicPlankton 6,PelagicPlankton,1,-8.7,-23.72,-23.57,-24.68,-17.78
+PelagicPlankton 7,PelagicPlankton,1,-8.42,-22.99,-23.14,-24.36,-16.57
+PelagicPlankton 8,PelagicPlankton,1,-10.29,-24.3,-24.58,-26.09,-17.17
+"Kona, A, Night, 0 -150, 1-2mm",HawaiiReefPlankton,4,-15.69,-23.12,-25.63,-25.52,-23.63
+"Kona, B, Night, 0-150, 1-2mm",HawaiiReefPlankton,4,-13.25,-23.29,-26.31,-25.71,-21.87
+"Kona, C, Night, 0-150, 1-2mm",HawaiiOffshorePlankton,4,-14.77,-22.92,-26.35,-25.68,-20.29
+"Kona, Reef, 7-8PM, 0.2-0.5 mm",HawaiiReefPlankton,4,-8.4,-17.48,-24.2,-21.29,-16.04
+"Kona, Reef, 7-8PM, 1-2 mm",HawaiiReefPlankton,4,-13.44,-21.35,-25.01,-24.51,-18.3
+"Kona, Reef, 12-1 AM, 1-2 mm",HawaiiReefPlankton,5,-12.98,-19.01,-24.13,-23.71,-21.94
+"Kona, A, Day, 0-150, 1-2mm",HawaiiReefPlankton,5,-15.14,-20.44,-26.19,-25.62,-22.21
+"Kona, C, Day, 0-150, 1-2mm",HawaiiOffshorePlankton,5,-15.55,-22.82,-26.84,-27.1,-25.64
+EB1,HawaiiReefPlankton,5,-12.88,-19.77,-26.86,-25.08,-18.91
+EB2,HawaiiReefPlankton,5,-15.52,-21.48,-27.22,-25.64,-17.46
+3T2,HawaiiReefPlankton,6,-12.3,-21.87,-23.59,-22.54,-17.42
+3T1,HawaiiReefPlankton,6,-10.23,-23.2,-23.12,-20.74,-16.19
+MP3,HawaiiReefPlankton,6,-14.12,-21.57,-23.04,-20.33,-16.68
+"Makaha Offshore 1, >0.2, Night",HawaiiOffshorePlankton,6,-14.85,-22.94,-25.38,-24.39,-19.29
+"Nanakuli Reef 1, >0.2, Night",HawaiiReefPlankton,6,-19.26,-24.22,-25.6,-24.37,-17.41
+KNS 1-1,HawaiiReefPlankton,6,-12.37,-22.02,-23.13,-22.95,-17.85
+KNS 1-2,HawaiiReefPlankton,6,-14.71,-21.45,-25.98,-23.7,-18.45
+KOS 3-1,HawaiiOffshorePlankton,6,-13.7,-23.21,-26.3,-24.86,-17.94
+KOS 3-2,HawaiiOffshorePlankton,7,-13.68,-22.95,-25.56,-25.3,-17.81
+KOS 4-1,HawaiiOffshorePlankton,7,-13.73,-21.71,-25.59,-26.16,-17.07
+KOS 4-2,HawaiiOffshorePlankton,7,-15,-23.35,-27.24,-23.3,-16.92
+KOS 5-1,HawaiiOffshorePlankton,,-15.28,-24.2,-26.39,-23.27,-17.46
+KOS 5-2,HawaiiOffshorePlankton,,-13.57,-23.18,-26.19,-25.26,-15.82
+ALOHA_50_100_0.2_Day,HawaiiOffshorePlankton,,-12.4,-22.8,-25.4,-25.5,-16.2
+ALOHA_50_100_0.5_Day,HawaiiOffshorePlankton,,-11.4,-23.5,-25.4,-27.1,-17.1
+ALOHA_50_100_2.0_Day,HawaiiOffshorePlankton,,-10.7,-22.5,-24.7,-25.1,-15.4
+ALOHA_50_100_0.5_Night,HawaiiOffshorePlankton,,-14,-24.2,-25.5,-24.6,-17.9
+ALOHA_300_500_0.5_Day,HawaiiOffshoreDeepPlankton,,-13.2,-24.7,-26.4,-28.3,-18.7
+ALOHA_700_1000_0.5_Day,HawaiiOffshoreDeepPlankton,,-10.6,-23.2,-24.8,-26.3,-17.7
+ALOHA_300_500_0.5_Night,HawaiiOffshoreDeepPlankton,,-14.1,-24.4,-26.1,-26.7,-18.4
+ALOHA_700_1000_0.5_Night,HawaiiOffshoreDeepPlankton,,-11.3,-24.4,-25.3,-25.1,-17.5
